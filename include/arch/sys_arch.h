@@ -10,12 +10,18 @@
 #ifndef __LWIP_ARCH_SYS_ARCH_H__
 #define __LWIP_ARCH_SYS_ARCH_H__
 
+#include <uk/config.h>
+
 #include <stdlib.h>
 #include <uk/mutex.h>
 #include <uk/semaphore.h>
 #include <uk/mbox.h>
 #if LIBUKSCHED
 #include <uk/thread.h>
+#endif
+
+#if LWIP_SOCKET && HAVE_LIBC
+#include <fcntl.h>
 #endif
 
 #define SYS_SEM_NULL   NULL
