@@ -62,12 +62,7 @@ err_t sys_mbox_trypost(sys_mbox_t *mbox, void *msg)
 {
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    if (!msg) { /* FIXME? */
-        uk_printd(DLVL_WARN, "Ignore posting NULL message");
-	return ERR_OK;
-    }
-
-    if (uk_mbox_mt_post_try(mbox->mbox, msg) != 0)
+    if (uk_mbox_mt_post_try(mbox->mbox, msg) < 0)
         return ERR_MEM;
     return ERR_OK;
 }
@@ -111,8 +106,7 @@ u32_t sys_arch_mbox_tryfetch(sys_mbox_t *mbox, void **msg) {
 
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    rmsg = uk_mbox_mt_recv_try(mbox->mbox);
-    if (!rmsg)
+    if (uk_mbox_mt_recv_try(mbox->mbox, &rmsg) < 0)
 	return SYS_MBOX_EMPTY;
 
     if (msg)
