@@ -12,8 +12,6 @@
 #include <inttypes.h>
 #include <uk/config.h>
 
-#define LWIP_SOCKET 1
-#define LWIP_IPV6 1
 #define SO_REUSE 1
 
 /*
