@@ -8,7 +8,7 @@
  * the initial state of the semaphore. */
 err_t sys_sem_new(sys_sem_t *sem, u8_t count)
 {
-	uk_semaphore_mt_init(&sem->sem, (long) count);
+	uk_semaphore_init(&sem->sem, (long) count);
 	sem->valid = 1;
 	return ERR_OK;
 }
@@ -31,7 +31,7 @@ void sys_sem_free(sys_sem_t *sem)
 /* Signals a semaphore. */
 void sys_sem_signal(sys_sem_t *sem)
 {
-	uk_semaphore_mt_up(&sem->sem);
+	uk_semaphore_up(&sem->sem);
 }
 
 /* Blocks the thread while waiting for the semaphore to be
@@ -48,7 +48,7 @@ u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout)
 {
     __nsec nsret;
 
-    nsret = uk_semaphore_mt_down_to(&sem->sem,
+    nsret = uk_semaphore_down_to(&sem->sem,
                                     ukarch_time_msec_to_nsec((__nsec) timeout));
     if (unlikely(nsret == __NSEC_MAX))
         return SYS_ARCH_TIMEOUT;

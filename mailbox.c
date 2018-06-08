@@ -13,7 +13,7 @@ err_t sys_mbox_new(sys_mbox_t *mbox, int size)
     UK_ASSERT(mbox);
     mbox->a = uk_alloc_get_default();
     UK_ASSERT(mbox->a);
-    mbox->mbox = uk_mbox_mt_create(mbox->a, size);
+    mbox->mbox = uk_mbox_create(mbox->a, size);
     if (!mbox->mbox)
         return ERR_MEM;
     mbox->valid = 1;
@@ -40,7 +40,7 @@ void sys_mbox_free(sys_mbox_t *mbox)
 {
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    uk_mbox_mt_free(mbox->a, mbox->mbox);
+    uk_mbox_free(mbox->a, mbox->mbox);
     sys_mbox_set_invalid(mbox);
 }
 
@@ -54,7 +54,7 @@ void sys_mbox_post(sys_mbox_t *mbox, void *msg)
 	return;
     }
 
-    uk_mbox_mt_post(mbox->mbox, msg);
+    uk_mbox_post(mbox->mbox, msg);
 }
 
 /* Try to post the "msg" to the mailbox. */
@@ -62,7 +62,7 @@ err_t sys_mbox_trypost(sys_mbox_t *mbox, void *msg)
 {
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    if (uk_mbox_mt_post_try(mbox->mbox, msg) < 0)
+    if (uk_mbox_post_try(mbox->mbox, msg) < 0)
         return ERR_MEM;
     return ERR_OK;
 }
@@ -83,7 +83,7 @@ u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout)
 
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    nsret = uk_mbox_mt_recv_to(mbox->mbox, msg,
+    nsret = uk_mbox_recv_to(mbox->mbox, msg,
                                ukarch_time_msec_to_nsec((__nsec) timeout));
     if (unlikely(nsret == __NSEC_MAX))
         return SYS_ARCH_TIMEOUT;
@@ -106,7 +106,7 @@ u32_t sys_arch_mbox_tryfetch(sys_mbox_t *mbox, void **msg) {
 
     UK_ASSERT(sys_mbox_valid(mbox));
 
-    if (uk_mbox_mt_recv_try(mbox->mbox, &rmsg) < 0)
+    if (uk_mbox_recv_try(mbox->mbox, &rmsg) < 0)
 	return SYS_MBOX_EMPTY;
 
     if (msg)

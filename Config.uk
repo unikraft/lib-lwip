@@ -3,7 +3,8 @@ menuconfig LIBLWIP
 	default n
 	select LIBNOLIBC if !HAVE_LIBC
 	select LIBUKDEBUG
-	select LIBUKMTPRIM
+	select LIBUKMPI
+	select LIBUKLOCK
 	select LIBUKSWRAND
 	select LIBUKSCHED
 	select HAVE_NW_STACK

@@ -8,7 +8,7 @@
  * the initial state of the semaphore. */
 err_t sys_mutex_new(sys_mutex_t *mtx)
 {
-	uk_mutex_mt_init(&mtx->mtx);
+	uk_mutex_init(&mtx->mtx);
 	mtx->valid = 1;
 	return ERR_OK;
 }
@@ -31,10 +31,10 @@ void sys_mutex_free(sys_mutex_t *mtx)
 /* Signals a mtxaphore. */
 void sys_mutex_lock(sys_mutex_t *mtx)
 {
-	uk_mutex_mt_hold(&mtx->mtx);
+	uk_mutex_hold(&mtx->mtx);
 }
 
 void sys_mutex_unlock(sys_mutex_t *mtx)
 {
-	uk_mutex_mt_release(&mtx->mtx);
+	uk_mutex_release(&mtx->mtx);
 }

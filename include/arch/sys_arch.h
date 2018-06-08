@@ -29,18 +29,18 @@
 #define SYS_MBOX_NULL  NULL
 
 typedef struct {
-	struct uk_mutex_mt mtx;
+	struct uk_mutex mtx;
 	int valid;
 } sys_mutex_t;
 
 typedef struct {
-	struct uk_semaphore_mt sem;
+	struct uk_semaphore sem;
 	int valid;
 } sys_sem_t;
 
 typedef struct {
 	struct uk_alloc *a;
-	struct uk_mbox_mt *mbox;
+	struct uk_mbox *mbox;
 	int valid;
 } sys_mbox_t;
 
