@@ -81,6 +81,12 @@ static ssize_t sock_net_write(struct vfscore_file *vfscore_file, const void *buf
 			     size_t count)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = __containerof(vfscore_file, struct sock_net_file,
+				vfscore_file);
+	uk_printd(DLVL_EXTRA, NET_LIB_NAME": write %d (%x):%s\n",
+			file->vfscore_file.fd, file->sock_fd, (char *) buf);
+	ret = lwip_write(file->sock_fd, buf, count);
 	return ret;
 }
 
@@ -88,6 +94,12 @@ static ssize_t sock_net_read(struct vfscore_file *vfscore_file, void *buf,
 			    size_t count)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = __containerof(vfscore_file, struct sock_net_file,
+				vfscore_file);
+	uk_printd(DLVL_EXTRA, NET_LIB_NAME": write %d (%x):%s\n",
+			file->vfscore_file.fd, file->sock_fd, (char *) buf);
+	ret = lwip_read(file->sock_fd, buf, count);
 	return ret;
 }
 
@@ -262,6 +274,16 @@ EXIT:
 int recv(int s, void *mem, size_t len, int flags)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_recv(file->sock_fd, mem, len, flags);
+EXIT:
 	return ret;
 }
 
@@ -269,18 +291,48 @@ int recvfrom(int s, void *mem, size_t len, int flags,
 		      struct sockaddr *from, socklen_t *fromlen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_recvfrom(file->sock_fd, mem, len, flags, from, fromlen);
+EXIT:
 	return ret;
 }
 
 int send(int s, const void *dataptr, size_t size, int flags)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_send(file->sock_fd, dataptr, size, flags);
+EXIT:
 	return ret;
 }
 
 int sendmsg(int s, const struct msghdr *message, int flags)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_sendmsg(file->sock_fd, message, flags);
+EXIT:
 	return ret;
 }
 
@@ -288,6 +340,16 @@ int sendto(int s, const void *dataptr, size_t size, int flags,
 		    const struct sockaddr *to, socklen_t tolen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_sendto(file->sock_fd, dataptr, size, flags, to, tolen);
+EXIT:
 	return ret;
 }
 
