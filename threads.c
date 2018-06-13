@@ -9,13 +9,15 @@
  * function "thread()". The "arg" argument will be passed as an argument to the
  * thread() function. The id of the new thread is returned. Both the id and
  * the priority are system dependent. */
-sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread, void *arg, int stacksize, int prio)
+sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread, void *arg,
+				int stacksize, int prio)
 {
-    static struct thread *t;
-    if (stacksize > __STACK_SIZE) {
-	uk_printd("Can't create lwIP thread: stack size %u is too large (> %u)\n", stacksize, __STACK_SIZE);
-	UK_CRASH("Dying\n");
-    }
-    t = uk_thread_create((char *) name, NULL, thread, arg);
-    return t;
+	struct uk_thread *t;
+	if (stacksize > __STACK_SIZE) {
+		uk_printd(DLVL_CRIT, "Can't create lwIP thread: stack size %u is too large (> %u)\n",
+					stacksize, __STACK_SIZE);
+		UK_CRASH("Dying\n");
+	}
+	t = uk_thread_create((char *) name, thread, arg);
+	return t;
 }
