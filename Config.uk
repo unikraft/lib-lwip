@@ -1,0 +1,162 @@
+menuconfig LIBLWIP
+	bool "lwip - Lightweight TCP/IP stack"
+	default n
+	select LIBNOLIBC if !HAVE_LIBC
+	select LIBUKDEBUG
+	select LIBUKMTPRIM
+	select LIBUKSWRAND
+	select LIBUKSCHED
+	select HAVE_NW_STACK
+
+	select LIBLWIP_HEAPONLY
+
+if LIBLWIP
+choice
+	prompt "Memory allocation mode"
+	default LWIP_HEAP
+
+config LWIP_HEAP
+	bool "Heap only"
+
+#config LWIP_POOLS
+#	bool "Memory pools"
+endchoice
+
+config LWIP_IPV4
+	bool "IPv4"
+	default y
+
+config LWIP_IPV6
+	bool "IPv6"
+	default n
+
+
+config LWIP_RXCHECKSUM
+	bool "Check checksum on reception"
+	default n
+
+config LWIP_TXCHECKSUM
+	bool "Calculate checksum on sending"
+	default y
+
+config LWIP_UDP
+	bool "UDP support"
+	default y
+
+menuconfig LWIP_TCP
+	bool "TCP support"
+	default y
+
+if LWIP_TCP
+config LWIP_TCP_MSS
+	int "Maximum segment size (bytes)"
+	default 1460
+
+config LWIP_WND_SCALE
+	bool "Window scaling"
+	default y
+
+config LWIP_TCP_KEEPALIVE
+	bool "Keepalive"
+	default n
+
+config LWIP_TCP_TIMESTAMPS
+	bool "Timestamps"
+	default n
+endif
+
+config LWIP_ICMP
+	bool "ICMP support"
+	default y
+
+config LWIP_IGMP
+	bool "IGMP support"
+	default n
+
+config LWIP_SNMP
+	bool "SNMP support"
+	default n
+
+config LWIP_DHCP
+	bool "DHCP client"
+	depends on LWIP_IPV4
+	default n
+	help
+		Query device IP address from DHCP server on network
+
+config LWIP_AUTOIP
+	bool "AutoIP"
+	depends on LWIP_IPV4
+	default n
+	help
+		Dynamic IP address assignment at device on startup
+
+menuconfig LWIP_DNS
+	bool "DNS Resolver"
+	default y
+
+if LWIP_DNS
+config LWIP_DNS_MAX_SERVERS
+	int "Maximum number of servers"
+	default 2
+
+config LWIP_DNS_TABLE_SIZE
+	int "DNS table size"
+	default 32
+endif
+
+config LWIP_PPP
+	bool "Point-to-Point support"
+	default n
+
+config LWIP_SLIP
+	bool "SLIP netif"
+	default n
+
+config LWIP_6LOWPAN
+	bool "6LowPAN"
+	depends on LWIP_IPV6
+	default n
+
+config LWIP_SOCKET
+	bool "Socket API"
+	default y
+
+menuconfig LWIP_DEBUG
+	bool "Debug messages"
+	default n
+
+if LWIP_DEBUG
+config LWIP_MAINLOOP_DEBUG
+	bool "Mainloop"
+	default n
+
+config LWIP_IF_DEBUG
+	bool "Netif"
+	default n
+
+config LWIP_IP_DEBUG
+	bool "IP"
+	default n
+
+config LWIP_UDP_DEBUG
+	bool "UDP"
+	default n
+
+config LWIP_TCP_DEBUG
+	bool "TCP"
+	default n
+
+config LWIP_SYS_DEBUG
+	bool "System"
+	default n
+
+config LWIP_API_DEBUG
+	bool "API"
+	default n
+
+config LWIP_SERVICE_DEBUG
+	bool "Service"
+	default n
+endif
+endif
