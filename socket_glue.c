@@ -134,7 +134,42 @@ LWIP_SOCKET_CLEANUP:
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
 	int ret = 0;
+	struct sock_net_file *file;
+	int sock_fd, vfs_fd;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to accept incomingi connection \n");
+		ret = -1;
+		/* Setting the errno */
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+	        goto EXIT;
+	}
+
+	/* Accept an incoming connection */
+	sock_fd = lwip_accept(file->sock_fd, addr, addrlen);
+	if(0 > sock_fd) {
+		uk_printd(DLVL_ERR, "failed to accept incoming connection \n");
+		ret = -1;
+		goto EXIT;
+	}
+
+	/* Allocate the file descriptor for the accepted connection */
+	vfs_fd = sock_fd_alloc(&sock_net_fops, sock_fd);
+	if(0 > vfs_fd) {
+		uk_printd(DLVL_ERR, "failed to allocate	descriptor for the"
+			"accepted connection \n");
+		ret = -1;
+		/* Setting the errno */
+		SOCK_NET_SET_ERRNO(vfs_fd);
+		goto LWIP_SOCKET_CLEANUP;
+	}
+	ret = vfs_fd;
+EXIT:
 	return ret;
+
+LWIP_SOCKET_CLEANUP:
+	lwip_close(sock_fd);
+	goto EXIT;
 }
 
 int bind(int s, const struct sockaddr *name, socklen_t namelen)
@@ -195,12 +230,32 @@ int setsockopt (int s, int level, int optname, const void *optval,
 int connect(int s, const struct sockaddr *name, socklen_t namelen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_connect(file->sock_fd, name, namelen);
+EXIT:
 	return ret;
 }
 
 int listen(int s, int backlog)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_listen(file->sock_fd, backlog);
+EXIT:
 	return ret;
 }
 
