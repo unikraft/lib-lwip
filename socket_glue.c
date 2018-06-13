@@ -74,6 +74,18 @@ UK_MEM_ALLOC_ERR:
 static int sock_net_close(struct vfscore_file *vfscore_file)
 {
 	int    ret = 0;
+	struct sock_net_file *file = NULL;
+	file = __containerof(vfscore_file, struct sock_net_file, vfscore_file);
+
+	uk_printd(DLVL_EXTRA, NET_LIB_NAME": close() %d (%x)\n",
+			file->vfscore_file.fd, file->sock_fd);
+
+	/* Close and release the lwip socket */
+	ret = lwip_close(file->sock_fd);
+	/* Release the file descriptor */
+	vfscore_put_fd(file->vfscore_file.fd);
+	/* Free the sock net structure */
+	uk_free(uk_alloc_get_default(), file);
 	return ret;
 }
 
@@ -210,6 +222,18 @@ EXIT:
 int shutdown(int s, int how)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		/* Setting the errno */
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	/* Shutdown of the descriptor */
+	ret = lwip_shutdown(file->sock_fd, how);
+EXIT:
 	return ret;
 }
 
