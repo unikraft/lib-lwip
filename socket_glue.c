@@ -4,6 +4,7 @@
 #include <uk/alloc.h>
 #include <uk/essentials.h>
 #include <uk/print.h>
+#include <uk/errptr.h>
 #include <stdio.h>
 #include <errno.h>
 #include <lwip/sockets.h>
@@ -19,6 +20,21 @@ struct sock_net_file {
 	struct vfscore_file vfscore_file;
 	int sock_fd;
 };
+
+static inline struct sock_net_file *sock_net_file_get(int fd)
+{
+	struct sock_net_file *file = NULL;
+	struct vfscore_file *fos;
+	fos  = vfscore_get_file(fd);
+	if(NULL == fos) {
+		uk_printd(DLVL_ERR,"failed with invalid descriptor\n");
+		file = ERR2PTR(-EINVAL);
+		goto EXIT;
+	}
+	file = __containerof(fos, struct sock_net_file, vfscore_file);
+EXIT:
+	return file;
+}
 
 static int sock_fd_alloc(struct vfscore_fops *fops, int sock_fd)
 {
@@ -124,6 +140,23 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 int bind(int s, const struct sockaddr *name, socklen_t namelen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		/* Setting the errno */
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	/* Bind an incoming connection */
+	ret = lwip_bind(file->sock_fd, name, namelen);
+	if(0 > ret) {
+		uk_printd(DLVL_ERR, "failed to bind with the socket \n");
+		ret = -1;
+		goto EXIT;
+	}
+EXIT:
 	return ret;
 }
 
