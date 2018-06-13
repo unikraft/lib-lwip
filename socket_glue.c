@@ -240,19 +240,48 @@ EXIT:
 int getpeername(int s, struct sockaddr *name, socklen_t *namelen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket\n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_getpeername(file->sock_fd, name, namelen);
+EXIT:
 	return ret;
 }
 
 int getsockname(int s, struct sockaddr *name, socklen_t *namelen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket\n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_getsockname(file->sock_fd, name, namelen);
+EXIT:
 	return ret;
 }
 
-int getsockopt(int s, int level, int optname, void *optval, socklen_t
-		*optlen)
+int getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_getsockopt(file->sock_fd, level, optname, optval, optlen);
+EXIT:
 	return ret;
 }
 
@@ -260,6 +289,16 @@ int setsockopt (int s, int level, int optname, const void *optval,
 		socklen_t optlen)
 {
 	int ret = 0;
+	struct sock_net_file *file = NULL;
+	file = sock_net_file_get(s);
+	if(PTRISERR(file)) {
+		uk_printd(DLVL_ERR, "failed to identify the socket descriptor \n");
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_setsockopt(file->sock_fd, level, optname, optval, optlen);
+EXIT:
 	return ret;
 }
 
@@ -380,6 +419,7 @@ EXIT:
 int select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set
 		*exceptset, struct timeval *timeout)
 {
-	int ret = -ENOTSUP;
+	int ret = -1;
+	SOCK_NET_SET_ERRNO(-ENOTSUP);
 	return ret;
 }
