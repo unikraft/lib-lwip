@@ -18,10 +18,10 @@ void sys_init(void)
  */
 int liblwip_init(void)
 {
-#if LIBUKSCHED
+#if CONFIG_LIBUKSCHED
         tcpip_init(NULL, NULL);
 #else
         lwip_init();
-#endif /* LIBUKSCHED */
+#endif /* CONFIG_LIBUKSCHED */
 	return 0;
 }

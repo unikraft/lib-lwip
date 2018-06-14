@@ -16,13 +16,13 @@
 #include <uk/mutex.h>
 #include <uk/semaphore.h>
 #include <uk/mbox.h>
-#if LIBUKSCHED
+#if CONFIG_LIBUKSCHED
 #include <uk/thread.h>
-#endif
+#endif /* CONFIG_LIBUKSCHED */
 
-#if LWIP_SOCKET && HAVE_LIBC
+#if CONFIG_LWIP_SOCKET && CONFIG_HAVE_LIBC
 #include <fcntl.h>
-#endif
+#endif /* CONFIG_LWIP_SOCKET && CONFIG_HAVE_LIBC */
 
 #define SYS_SEM_NULL   NULL
 #define SYS_MUTEX_NULL NULL
@@ -44,9 +44,9 @@ typedef struct {
 	int valid;
 } sys_mbox_t;
 
-#if LIBUKSCHED
+#if CONFIG_LIBUKSCHED
 typedef struct uk_thread *sys_thread_t;
-#endif
+#endif /* CONFIG_LIBUKSCHED */
 
 typedef unsigned long sys_prot_t;
 

@@ -21,7 +21,7 @@
 #define SYS_LIGHTWEIGHT_PROT 1
 
 /* provide malloc/free by Unikraft */
-#if LWIP_HEAP /* default */
+#if CONFIG_LWIP_HEAP /* default */
   /* Only use malloc/free for lwIP.
    * Every allocation is done by the heap.
    * Note: This setting results in the smallest binary
@@ -30,7 +30,7 @@
    */
   #define MEM_LIBC_MALLOC 1 /* enable heap */
   #define MEMP_MEM_MALLOC 1 /* pool allocations via malloc (thus not from pool in data segment) */
-#elif LWIP_POOLS
+#elif CONFIG_LWIP_POOLS
   /* This is the default configuration (mixed).
    * Pools are used for pool allocations and the heap
    * is used for all the rest of allocations.
@@ -102,7 +102,7 @@ void sys_free(void *ptr);
 /*
  * TCP options
  */
-#define TCP_MSS LWIP_TCP_MSS
+#define TCP_MSS CONFIG_LWIP_TCP_MSS
 
 
 #define TCP_CALCULATE_EFF_SEND_MSS 1
@@ -110,13 +110,14 @@ void sys_free(void *ptr);
 
 
 
-#if LWIP_WND_SCALE
+#if CONFIG_LWIP_WND_SCALE
 /*
  * Maximum window and scaling factor
  * Optimal settings for RX performance are:
  * 	TCP_WND		262143
  * 	TCP_RCV_SCALE	5
  */
+#define LWIP_WND_SCALE  1
 #if defined CONFIG_LWIP_WND_SCALE_FACTOR && CONFIG_LWIP_WND_SCALE_FACTOR >= 1
 #define TCP_RCV_SCALE CONFIG_LWIP_WND_SCALE_FACTOR /* scaling factor 0..14 */
 #else
@@ -125,7 +126,7 @@ void sys_free(void *ptr);
 #define TCP_WND 262142
 #define TCP_SND_BUF ( 1024 * 1024 )
 
-#else /* LWIP_WND_SCALE */
+#else /* CONFIG_LWIP_WND_SCALE */
 /*
  * Options when no window scaling  is enabled
  */
@@ -145,8 +146,8 @@ void sys_free(void *ptr);
 /*
  * DNS options
  */
-#define DNS_MAX_SERVERS LWIP_DNS_MAX_SERVERS
-#define DNS_TABLE_SIZE LWIP_DNS_TABLE_SIZE
+#define DNS_MAX_SERVERS CONFIG_LWIP_DNS_MAX_SERVERS
+#define DNS_TABLE_SIZE CONFIG_LWIP_DNS_TABLE_SIZE
 #define DNS_LOCAL_HOST_LIST 1
 #define DNS_LOCAL_HOSTLIST_IS_DYNAMIC 1
 
@@ -167,83 +168,83 @@ void sys_free(void *ptr);
 /*
  * Checksum options
  */
-#define CHECKSUM_GEN_IP LWIP_TXCHECKSUM
-#define CHECKSUM_GEN_IP6 LWIP_TXCHECKSUM
-#define CHECKSUM_GEN_ICMP LWIP_TXCHECKSUM
-#define CHECKSUM_GEN_ICMP6 LWIP_TXCHECKSUM
-#define CHECKSUM_GEN_UDP LWIP_TXCHECKSUM
-#define CHECKSUM_GEN_TCP LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_IP CONFIG_LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_IP6 CONFIG_LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_ICMP CONFIG_LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_ICMP6 CONFIG_LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_UDP CONFIG_LWIP_TXCHECKSUM
+#define CHECKSUM_GEN_TCP CONFIG_LWIP_TXCHECKSUM
 #define LWIP_CHECKSUM_ON_COPY 1
 
 /* Checksum checking is offloaded to the host (lwip-net is a virtual interface)
  * TODO: better solution is when netfront forwards checksum flags to lwIP */
-#define CHECKSUM_CHECK_IP LWIP_RXCHECKSUM
-#define CHECKSUM_CHECK_UDP LWIP_RXCHECKSUM
-#define CHECKSUM_CHECK_TCP LWIP_RXCHECKSUM
-#define CHECKSUM_CHECK_ICMP LWIP_RXCHECKSUM
-#define CHECKSUM_CHECK_ICMP6 LWIP_RXCHECKSUM
-#define CHECKSUM_CHECK_TCP LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_IP CONFIG_LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_UDP CONFIG_LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_TCP CONFIG_LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_ICMP CONFIG_LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_ICMP6 CONFIG_LWIP_RXCHECKSUM
+#define CHECKSUM_CHECK_TCP CONFIG_LWIP_RXCHECKSUM
 
-#ifdef LWIP_MAINLOOP_DEBUG
-#define IP_DEBUG LWIP_DBG_ON
-#define TCPIP_DEBUG LWIP_DBG_ON
-#define TIMERS_DEBUG LWIP_DBG_ON
-#endif /* LWIP_MAINLOOP_DEBUG */
+#ifdef CONFIG_LWIP_MAINLOOP_DEBUG
+#define IP_DEBUG         LWIP_DBG_ON
+#define TCPIP_DEBUG      LWIP_DBG_ON
+#define TIMERS_DEBUG     LWIP_DBG_ON
+#endif /* CONFIG_LWIP_MAINLOOP_DEBUG */
 
-#ifdef LWIP_IF_DEBUG
-#define NETIF_DEBUG LWIP_DBG_ON
-#endif /* LWIP_IF_DEBUG */
+#ifdef CONFIG_LWIP_IF_DEBUG
+#define NETIF_DEBUG      LWIP_DBG_ON
+#endif /* CONFIG_LWIP_IF_DEBUG */
 
-#ifdef LWIP_IP_DEBUG
-#define IP_DEBUG LWIP_DBG_ON
-#define IP6_DEBUG LWIP_DBG_ON
-#define IP_REASS_DEBUG LWIP_DBG_ON
-#endif /* LWIP_IP_DEBUG */
+#ifdef CONFIG_LWIP_IP_DEBUG
+#define IP_DEBUG         LWIP_DBG_ON
+#define IP6_DEBUG        LWIP_DBG_ON
+#define IP_REASS_DEBUG   LWIP_DBG_ON
+#endif /* CONFIG_LWIP_IP_DEBUG */
 
-#ifdef LWIP_UDP_DEBUG
-#define UDP_DEBUG LWIP_DBG_ON
-#endif /* LWIP_UDP_DEBUG */
+#ifdef CONFIG_LWIP_UDP_DEBUG
+#define UDP_DEBUG        LWIP_DBG_ON
+#endif /* CONFIG_LWIP_UDP_DEBUG */
 
-#ifdef LWIP_TCP_DEBUG
-#define TCP_DEBUG LWIP_DBG_ON
-#define TCP_FR_DEBUG LWIP_DBG_ON
-#define TCP_RTO_DEBUG LWIP_DBG_ON
-#define TCP_CWND_DEBUG LWIP_DBG_ON
-#define TCP_WND_DEBUG LWIP_DBG_ON
-#define TCP_RST_DEBUG LWIP_DBG_ON
-#define TCP_QLEN_DEBUG LWIP_DBG_ON
+#ifdef CONFIG_LWIP_TCP_DEBUG
+#define TCP_DEBUG        LWIP_DBG_ON
+#define TCP_FR_DEBUG     LWIP_DBG_ON
+#define TCP_RTO_DEBUG    LWIP_DBG_ON
+#define TCP_CWND_DEBUG   LWIP_DBG_ON
+#define TCP_WND_DEBUG    LWIP_DBG_ON
+#define TCP_RST_DEBUG    LWIP_DBG_ON
+#define TCP_QLEN_DEBUG   LWIP_DBG_ON
 //#define TCP_OUTPUT_DEBUG LWIP_DBG_ON
 //#define TCP_INPUT_DEBUG LWIP_DBG_ON
 #if LWIP_CHECKSUM_ON_COPY
 #define TCP_CHECKSUM_ON_COPY_SANITY_CHECK 1
 #endif
-#endif /* LWIP_TCP_DEBUG */
+#endif /* CONFIG_LWIP_TCP_DEBUG */
 
-#ifdef LWIP_SYS_DEBUG
-#define SYS_DEBUG LWIP_DBG_ON
-#define PBUF_DEBUG LWIP_DBG_ON
-#define MEM_DEBUG LWIP_DBG_ON
-#define MEMP_DEBUG LWIP_DBG_ON
+#ifdef CONFIG_LWIP_SYS_DEBUG
+#define SYS_DEBUG        LWIP_DBG_ON
+#define PBUF_DEBUG       LWIP_DBG_ON
+#define MEM_DEBUG        LWIP_DBG_ON
+#define MEMP_DEBUG       LWIP_DBG_ON
 #endif /* LWIP_SYS_DEBUG */
 
 #ifdef LWIP_API_DEBUG
-#define SOCKETS_DEBUG LWIP_DBG_ON
-#define RAW_DEBUG LWIP_DBG_ON
-#define API_MSG_DEBUG LWIP_DBG_ON
-#define API_LIB_DEBUG LWIP_DBG_ON
+#define SOCKETS_DEBUG    LWIP_DBG_ON
+#define RAW_DEBUG        LWIP_DBG_ON
+#define API_MSG_DEBUG    LWIP_DBG_ON
+#define API_LIB_DEBUG    LWIP_DBG_ON
 #endif /* LWIP_API_DEBUG */
 
 #ifdef LWIP_SERVICE_DEBUG
-#define ETHARP_DEBUG LWIP_DBG_ON
-#define DNS_DEBUG LWIP_DBG_ON
-#define AUTOIP_DEBUG LWIP_DBG_ON
-#define DHCP_DEBUG LWIP_DBG_ON
-#define ICMP_DEBUG LWIP_DBG_ON
-#define SNMP_DEBUG LWIP_DBG_ON
-#define SNMP_MSG_DEBUG LWIP_DBG_ON
-#define SNMP_MIB_DEBUG LWIP_DBG_ON
-#define PPP_DEBUG LWIP_DBG_ON
-#define SLIP_DEBUG LWIP_DBG_ON
+#define ETHARP_DEBUG     LWIP_DBG_ON
+#define DNS_DEBUG        LWIP_DBG_ON
+#define AUTOIP_DEBUG     LWIP_DBG_ON
+#define DHCP_DEBUG       LWIP_DBG_ON
+#define ICMP_DEBUG       LWIP_DBG_ON
+#define SNMP_DEBUG       LWIP_DBG_ON
+#define SNMP_MSG_DEBUG   LWIP_DBG_ON
+#define SNMP_MIB_DEBUG   LWIP_DBG_ON
+#define PPP_DEBUG        LWIP_DBG_ON
+#define SLIP_DEBUG       LWIP_DBG_ON
 #endif /* LWIP_SERVICE_DEBUG */
 
 #endif /* __LWIP_LWIPOPTS_H__ */
