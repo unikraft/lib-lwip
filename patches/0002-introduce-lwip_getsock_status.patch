@@ -1,6 +1,6 @@
 diff -urp lwip-2.0.3-orig/src/api/sockets.c src/api/sockets.c
---- src/api/sockets.c	2018-03-20 13:07:37.161480805 +0100
-+++ src/api/sockets.c	2018-03-19 18:01:08.206420575 +0100
+--- a/src/api/sockets.c	2018-03-20 13:07:37.161480805 +0100
++++ b/src/api/sockets.c	2018-03-19 18:01:08.206420575 +0100
 @@ -1290,6 +1290,46 @@ lwip_writev(int s, const struct iovec *i
    return lwip_sendmsg(s, &msg, 0);
  }
@@ -49,8 +49,8 @@ diff -urp lwip-2.0.3-orig/src/api/sockets.c src/api/sockets.c
   * Go through the readset and writeset lists and see which socket of the sockets
   * set in the sets has events. On return, readset, writeset and exceptset have
 diff -urp src/include/lwip/sockets.h src/include/lwip/sockets.h
---- src/include/lwip/sockets.h	2017-03-01 23:13:14.000000000 +0100
-+++ src/include/lwip/sockets.h	2018-03-19 17:34:49.143047601 +0100
+--- a/src/include/lwip/sockets.h	2017-03-01 23:13:14.000000000 +0100
++++ b/src/include/lwip/sockets.h	2018-03-19 17:34:49.143047601 +0100
 @@ -419,6 +419,10 @@ typedef struct ip_mreq {
  #define FD_ISSET(n,p) FDSETSAFEGET(n, (p)->fd_bits[((n)-LWIP_SOCKET_OFFSET)/8] &   (1 << (((n)-LWIP_SOCKET_OFFSET) & 7)))
  #define FD_ZERO(p)    memset((void*)(p), 0, sizeof(*(p)))
