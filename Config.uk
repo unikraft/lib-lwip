@@ -7,6 +7,23 @@ menuconfig LIBLWIP
 	select HAVE_NW_STACK
 
 if LIBLWIP
+menu "Netif drivers"
+config LWIP_UKNETDEV
+	bool "Unikraft Netdev Ethernet (libuknetdev)"
+	default y
+	select LIBUKNETDEV
+	select LIBUKNETDEV_DISPATCHERTHREADS if LWIP_THREADS
+	help
+		A generic driver that operates network drivers through
+		libuknetdev API.
+		Note: When lwIP is configured with mainloop mode, receive
+		interrupts are not enabled by this driver (there is also no
+		receive interrupt handler registered).
+		In case threaded mode is selected and the underlying device
+		driver does not support receive interrupts the network
+		interfaces have to be polled manually (uknetdev_poll()).
+endmenu
+
 choice
 	prompt "Operation mode"
 	default LWIP_THREADS

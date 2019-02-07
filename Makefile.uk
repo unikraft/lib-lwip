@@ -111,6 +111,8 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_EXTRACTED)/api/sockets.c
 # NETIFs
 ################################################################################
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/netif/ethernet.c
+LIBLWIP_SRCS-$(CONFIG_LWIP_UKNETDEV) += $(LIBLWIP_BASE)/netbuf.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_UKNETDEV) += $(LIBLWIP_BASE)/uknetdev.c|unikraft
 
 ################################################################################
 # IPv4
