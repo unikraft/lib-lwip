@@ -43,6 +43,7 @@
 #else /* CONFIG_LWIP_NOTHREADS */
 #include <uk/semaphore.h>
 #endif /* CONFIG_LWIP_NOTHREADS */
+#include "netif/uknetdev.h"
 
 void sys_init(void)
 {
@@ -68,6 +69,22 @@ static void _lwip_init_done(void *arg __unused)
  */
 int liblwip_init(void)
 {
+#if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
+	unsigned int devid;
+	struct uk_netdev *dev;
+	struct netif *nf;
+	const char  __maybe_unused *strcfg;
+	uint16_t  __maybe_unused int16cfg;
+	int is_first_nf;
+#if LWIP_IPV4
+	ip4_addr_t __maybe_unused ip4;
+	ip4_addr_t *ip4_arg;
+	ip4_addr_t __maybe_unused mask4;
+	ip4_addr_t *mask4_arg;
+	ip4_addr_t __maybe_unused gw4;
+	ip4_addr_t *gw4_arg;
+#endif /* LWIP_IPV4 */
+#endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 
 #if !CONFIG_LWIP_NOTHREADS
 	uk_semaphore_init(&_lwip_init_sem, 0);
@@ -82,5 +99,76 @@ int liblwip_init(void)
 	uk_semaphore_down(&_lwip_init_sem);
 #endif /* CONFIG_LWIP_NOTHREADS */
 
+#if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
+	is_first_nf = 1;
+
+	for (devid = 0; devid < uk_netdev_count(); ++devid) {
+		dev = uk_netdev_get(devid);
+		if (!dev)
+			continue;
+		if (uk_netdev_state_get(dev) != UK_NETDEV_UNCONFIGURED) {
+			uk_pr_info("Skipping to add network device %u to lwIP: Not in unconfigured state\n",
+				    devid);
+			continue;
+		}
+
+		uk_pr_info("Attach network device %u to lwIP...\n",
+			   devid);
+
+#if LWIP_IPV4
+		ip4_arg   = NULL;
+		mask4_arg = NULL;
+		gw4_arg   = NULL;
+
+		/*
+		 * TODO: Try to get device configuration from
+		 * netdev's econf interface:
+		 *
+		 * UK_NETDEV_IPV4_ADDR_NINT16;
+		 * UK_NETDEV_IPV4_ADDR_STR;
+		 * UK_NETDEV_IPV4_MASK_NINT16;
+		 * UK_NETDEV_IPV4_MASK_STR;
+		 * UK_NETDEV_IPV4_GW_NINT16;
+		 * UK_NETDEV_IPV4_GW_STR;
+		 *
+		 * When successfully done, set
+		 *  ip_arg = &ip;
+		 *  mask_arg = &mask;
+		 *  gw_arg = &gw;
+		 */
+
+		nf = uknetdev_addif(dev, ip4_arg, mask4_arg, gw4_arg);
+#else /* LWIP_IPV4 */
+		/*
+		 * TODO: Add support for IPv6 device configuration from
+		 * netdev's econf interface
+		 */
+
+		nf = uknetdev_addif(dev);
+#endif /* LWIP_IPV4 */
+		if (!nf) {
+			uk_pr_err("Failed to attach network device %u to lwIP\n",
+				  devid);
+			continue;
+		}
+
+		/* Declare the first network device as default interface */
+		if (is_first_nf) {
+			uk_pr_info("%c%c%u: Set as default interface\n",
+				   nf->name[0], nf->name[1], nf->num);
+			netif_set_default(nf);
+			is_first_nf = 0;
+		}
+		netif_set_up(nf);
+
+#if LWIP_IPV4 && LWIP_DHCP
+		if (!ip4_arg) {
+			uk_pr_info("%c%c%u: DHCP configuration (background)...\n",
+				   nf->name[0], nf->name[1], nf->num);
+			dhcp_start(nf);
+		}
+#endif /* LWIP_IPV4 && LWIP_DHCP */
+	}
+#endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 	return 0;
 }

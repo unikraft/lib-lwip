@@ -24,6 +24,13 @@ config LWIP_UKNETDEV
 		interfaces have to be polled manually (uknetdev_poll()).
 endmenu
 
+config LWIP_AUTOIFACE
+	bool "Automatically attach netifs"
+	default y
+	help
+		Automatically attach found network devices to the stack
+		during initialization.
+
 choice
 	prompt "Operation mode"
 	default LWIP_THREADS
