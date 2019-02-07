@@ -1,0 +1,27 @@
+*.depend
+*.o
+*.a
+*.d
+*.so
+*.orig
+*.rej
+*.bak
+*.swp
+*~
+,*
+\#*\#
+.\#*
+\#_*\#
+.\#_*
+!.gitignore
+.*
+
+# gnu global files
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+
+# cscope files
+cscope.*
+ncscope.*
