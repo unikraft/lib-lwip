@@ -67,6 +67,19 @@ config LWIP_HEAP
 #	bool "Memory pools"
 endchoice
 
+config LWIP_NETIF_EXT_STATUS_CALLBACK
+	bool "Netif extended status callback API"
+	default y
+	help
+		Support extended status callbacks to netif related events.
+
+config LWIP_NETIF_STATUS_PRINT
+	bool "Print netif status updates"
+	depends on LWIP_NETIF_EXT_STATUS_CALLBACK
+	default y
+	help
+		Print netif status changes to standard console
+
 config LWIP_IPV4
 	bool "IPv4 support"
 	default y

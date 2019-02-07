@@ -45,6 +45,67 @@
 #endif /* CONFIG_LWIP_NOTHREADS */
 #include "netif/uknetdev.h"
 
+#if LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT
+#include <stdio.h>
+
+static void _netif_status_print(struct netif *nf, netif_nsc_reason_t reason,
+				const netif_ext_callback_args_t *args)
+{
+	if (reason & LWIP_NSC_NETIF_ADDED)
+		printf("%c%c%u: Added\n",
+		       nf->name[0], nf->name[1], nf->num);
+	if (reason & LWIP_NSC_NETIF_REMOVED)
+		printf("%c%c%u: Removed\n",
+		       nf->name[0], nf->name[1], nf->num);
+	if (reason & LWIP_NSC_LINK_CHANGED)
+		printf("%c%c%u: Link is %s\n",
+		       nf->name[0], nf->name[1], nf->num,
+		       args->link_changed.state ? "up" : "down");
+	if (reason & LWIP_NSC_STATUS_CHANGED)
+		printf("%c%c%u: Interface is %s\n",
+		       nf->name[0], nf->name[1], nf->num,
+		       args->status_changed.state ? "up" : "down");
+
+#if LWIP_IPV4
+	if ((reason & LWIP_NSC_IPV4_SETTINGS_CHANGED)
+	    || (reason & LWIP_NSC_IPV4_ADDRESS_CHANGED)
+	    || (reason & LWIP_NSC_IPV4_NETMASK_CHANGED)
+	    || (reason & LWIP_NSC_IPV4_GATEWAY_CHANGED)) {
+		char str_ip4_addr[17];
+		char str_ip4_mask[17];
+		char str_ip4_gw[17];
+
+		ipaddr_ntoa_r(&nf->ip_addr, str_ip4_addr, sizeof(str_ip4_addr));
+		ipaddr_ntoa_r(&nf->netmask, str_ip4_mask, sizeof(str_ip4_mask));
+		ipaddr_ntoa_r(&nf->gw,      str_ip4_gw,   sizeof(str_ip4_gw));
+
+		printf("%c%c%u: Set IPv4 address %s mask %s gw %s\n",
+		       nf->name[0], nf->name[1], nf->num,
+		       str_ip4_addr, str_ip4_mask, str_ip4_gw);
+	}
+#endif /* LWIP_IPV4 */
+
+#if LWIP_IPV6
+	if (reason & LWIP_NSC_IPV6_SET)
+		printf("%c%c%u: Set IPv6 address %"__PRIs8": %s (state %"__PRIu8")\n",
+		       nf->name[0], nf->name[1], nf->num,
+		       args->ipv6_set.addr_index,
+		       ipaddr_ntoa(&nf->ip6_addr[args->ipv6_set.addr_index]),
+		       nf->ip6_addr_state[args->ipv6_set.addr_index]);
+	if (reason & LWIP_NSC_IPV6_ADDR_STATE_CHANGED)
+		printf("%c%c%u: Set IPv6 address %"__PRIs8": %s (state %"__PRIu8")\n",
+		       nf->name[0], nf->name[1], nf->num,
+		       args->ipv6_set.addr_index,
+		       ipaddr_ntoa(&nf->ip6_addr[
+				     args->ipv6_addr_state_changed.addr_index]),
+		       nf->ip6_addr_state[
+				     args->ipv6_addr_state_changed.addr_index]);
+#endif /* LWIP_IPV6 */
+}
+
+NETIF_DECLARE_EXT_CALLBACK(netif_status_print)
+#endif /* LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT */
+
 void sys_init(void)
 {
 	/*
@@ -98,6 +159,11 @@ int liblwip_init(void)
 	/* Wait until stack is booted */
 	uk_semaphore_down(&_lwip_init_sem);
 #endif /* CONFIG_LWIP_NOTHREADS */
+
+#if LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT
+	/* Add print callback for netif state changes */
+	netif_add_ext_callback(&netif_status_print, _netif_status_print);
+#endif /* LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT */
 
 #if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
 	is_first_nf = 1;
