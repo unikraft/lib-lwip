@@ -62,28 +62,25 @@
 #define PACK_STRUCT_BEGIN
 #define PACK_STRUCT_END
 
-/* platform specific diagnostic output */
 #define LWIP_PLATFORM_DIAG(_x) \
-	do {					 \
-		if (DLVL_INFO <= DLVL_MAX) {	 \
-			_lwip_platform_diag _x;	 \
-		}				 \
-	} while(0)
+	({ uk_pr_debug _x; })
 
-static inline void _lwip_platform_diag(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	uk_vprintd(DLVL_INFO, fmt, ap);
-	va_end(ap);
-}
-
-#define LWIP_PLATFORM_ASSERT(_x) UK_ASSERT((_x))
+#if CONFIG_LIBUKDEBUG_ENABLE_ASSERT
+#define LWIP_PLATFORM_ASSERT(_x) \
+	do { uk_pr_crit(_x); UK_BUG(); } while (0)
+#else
+#define LWIP_PLATFORM_ASSERT(_x) \
+	do { } while (0)
+#endif /* CONFIG_LIBUKDEBUG_ENABLE_ASSERT */
 
 /* lightweight synchronization mechanisms */
-#define SYS_ARCH_DECL_PROTECT(_x)  unsigned long (_x)
-#define SYS_ARCH_PROTECT(_x)       do { (_x) = ukplat_lcpu_save_irqf(); } while(0)
-#define SYS_ARCH_UNPROTECT(_x)     ukplat_lcpu_restore_irqf((_x))
+#define SYS_ARCH_DECL_PROTECT(_x) \
+	unsigned long (_x)
+
+#define SYS_ARCH_PROTECT(_x) \
+	({ (_x) = ukplat_lcpu_save_irqf(); })
+
+#define SYS_ARCH_UNPROTECT(_x) \
+	ukplat_lcpu_restore_irqf((_x))
 
 #endif /* __LWIP_ARCH_CC_H__ */

@@ -4,7 +4,8 @@
 #           Simon Kuenzer <simon.kuenzer@neclab.eu>
 #
 #
-#  Copyright (c) 2017, NEC Europe Ltd., NEC Corporation. All rights reserved.
+#  Copyright (c) 2017-2019, NEC Europe Ltd., NEC Corporation.
+#                           All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -42,7 +43,7 @@ $(eval $(call addlib_s,liblwip,$(CONFIG_LIBLWIP)))
 ################################################################################
 # Sources
 ################################################################################
-LIBLWIP_ZIPNAME=lwip-2.0.3
+LIBLWIP_ZIPNAME=lwip-2.1.2
 LIBLWIP_URL=http://download.savannah.nongnu.org/releases/lwip/$(LIBLWIP_ZIPNAME).zip
 LIBLWIP_PATCHDIR=$(LIBLWIP_BASE)/patches
 $(eval $(call fetch,liblwip,$(LIBLWIP_URL)))
@@ -60,33 +61,22 @@ CINCLUDES-$(CONFIG_LIBLWIP)   += -I$(LIBLWIP_BASE)/include -I$(LIBLWIP_EXTRACTED
 CXXINCLUDES-$(CONFIG_LIBLWIP) += -I$(LIBLWIP_BASE)/include -I$(LIBLWIP_EXTRACTED)/include
 
 ################################################################################
-# Global flags
+# Library flags
 ################################################################################
-LIBLWIP_CFLAGS-y += -DCONFIG_LWIP_MINIMAL -ULWIP_TIMEVAL_PRIVATE
-
-# Suppress some warnings to make the build process look neater
-LIBLWIP_SUPPRESS_CFLAGS += -Wno-unused-parameter -Wno-unused-variable \
--Wno-unused-but-set-variable -Wno-unused-label -Wno-char-subscripts  \
--Wno-unused-function -Wno-missing-field-initializers                 \
--Wno-uninitialized -Wno-array-bounds -Wno-maybe-uninitialized        \
--Wno-pointer-sign -Wno-unused-value -Wno-unused-macros               \
--Wno-parentheses -Wno-implicit-function-declaration                  \
--Wno-shift-negative-value -Wno-missing-braces -Wno-endif-labels      \
--Wno-unused-but-set-variable -Wno-implicit-function-declaration      \
--Wno-unused-const-variable -Wno-type-limits -Wno-sign-compare
-LIBLWIP_CFLAGS-y += $(LIBLWIP_SUPPRESS_CFLAGS)
+LIBLWIP_CFLAGS-y += -Wno-type-limits -Wunused-parameter
+LIBLWIP_CFLAGS-$(CONFIG_LWIP_DEBUG) += -DUK_DEBUG
 
 ################################################################################
 # Core
 ################################################################################
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/alloc.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/mutex.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/semaphore.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/mailbox.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mutex.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/semaphore.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mailbox.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/threads.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/init.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/threads.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/time.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/socket_glue.c|unikraft
+LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_BASE)/sockets.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/core/init.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/core/def.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/core/inet_chksum.c
@@ -118,23 +108,20 @@ LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/tcpip.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_EXTRACTED)/api/sockets.c
 
 ################################################################################
-# NETIF Helpers
+# NETIFs
 ################################################################################
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/netif/ethernet.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_SLIP) += $(LIBLWIP_EXTRACTED)/netif/slipif.c
-LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/netif/lowpan6.c
 
 ################################################################################
 # IPv4
 ################################################################################
-LIBLWIP_SRCS-$(CONFIG_LWIP_AUTOIP)  += $(LIBLWIP_EXTRACTED)/core/ipv4/autoip.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_DHCP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/dhcp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/etharp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/icmp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/igmp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/ip4_frag.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/ip4.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/ip4_addr.c
+LIBLWIP_SRCS-$(CONFIG_LWIP_ICMP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/icmp.c
+LIBLWIP_SRCS-$(CONFIG_LWIP_IGMP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/igmp.c
+LIBLWIP_SRCS-$(CONFIG_LWIP_DHCP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/dhcp.c
 
 ################################################################################
 # IPv6
@@ -148,37 +135,3 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ip6_addr.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ip6_frag.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/mld6.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/nd6.c
-
-################################################################################
-# Lwip code - PPP
-################################################################################
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/auth.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/ccp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/chap-md5.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/chap_ms.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/chap-new.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/demand.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/eap.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/ecp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/eui64.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/fsm.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/ipcp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/ipv6cp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/lcp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/magic.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/mppe.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/multilink.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/ppp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/pppapi.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/pppcrypt.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/pppoe.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/pppol2tp.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/pppos.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/upap.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/utils.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/vj.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/polarssl/arc4.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/polarssl/des.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/polarssl/md4.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/polarssl/md5.c
-LIBLWIP_SRCS-$(CONFIG_LWIP_PPP) += $(LIBLWIP_EXTRACTED)/netif/ppp/polarssl/sha1.c

@@ -3,45 +3,53 @@ menuconfig LIBLWIP
 	default n
 	select LIBNOLIBC if !HAVE_LIBC
 	select LIBUKDEBUG
+	select LIBUKSWRAND
+	select HAVE_NW_STACK
+
+if LIBLWIP
+choice
+	prompt "Operation mode"
+	default LWIP_THREADS
+
+config LWIP_NOTHREADS
+	bool "Mainloop (non-threaded)"
+	help
+		No thread is created to operate the stack. The stack has to be
+		called from the same context as all stack interactions. This
+		includes polling network devices. The Socket API is unavailable.
+
+config LWIP_THREADS
+	bool "Threaded"
+	select LIBUKSCHED
 	select LIBUKMPI
 	select LIBUKMPI_MBOX
 	select LIBUKLOCK
 	select LIBUKLOCK_SEMAPHORE
 	select LIBUKLOCK_MUTEX
-	select LIBUKSWRAND
-	select LIBUKSCHED
-	select HAVE_NW_STACK
+	help
+		Creates a core thread for the stack.
+endchoice
 
-	select LIBLWIP_HEAPONLY
-
-if LIBLWIP
 choice
 	prompt "Memory allocation mode"
 	default LWIP_HEAP
 
 config LWIP_HEAP
 	bool "Heap only"
+	help
+		Use default ukalloc allocator for all memory allocation requests
 
 #config LWIP_POOLS
 #	bool "Memory pools"
 endchoice
 
 config LWIP_IPV4
-	bool "IPv4"
+	bool "IPv4 support"
 	default y
 
 config LWIP_IPV6
-	bool "IPv6"
+	bool "IPv6 support"
 	default n
-
-
-config LWIP_RXCHECKSUM
-	bool "Check checksum on reception"
-	default n
-
-config LWIP_TXCHECKSUM
-	bool "Calculate checksum on sending"
-	default y
 
 config LWIP_UDP
 	bool "UDP support"
@@ -84,16 +92,12 @@ config LWIP_SNMP
 config LWIP_DHCP
 	bool "DHCP client"
 	depends on LWIP_IPV4
+	select LWIP_UDP
 	default n
 	help
-		Query device IP address from DHCP server on network
-
-config LWIP_AUTOIP
-	bool "AutoIP"
-	depends on LWIP_IPV4
-	default n
-	help
-		Dynamic IP address assignment at device on startup
+		When LWIP_AUTOIFACE is used, the initialization routine will
+		query the IPv4 addresses for the found devices from a DHCP
+		server on network.
 
 menuconfig LWIP_DNS
 	bool "DNS Resolver"
@@ -109,58 +113,69 @@ config LWIP_DNS_TABLE_SIZE
 	default 32
 endif
 
-config LWIP_PPP
-	bool "Point-to-Point support"
-	default n
-
-config LWIP_SLIP
-	bool "SLIP netif"
-	default n
-
-config LWIP_6LOWPAN
-	bool "6LowPAN"
-	depends on LWIP_IPV6
-	default n
-
 config LWIP_SOCKET
 	bool "Socket API"
+	select LIBVFSCORE
+	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	default y
 
 menuconfig LWIP_DEBUG
 	bool "Debug messages"
 	default n
+	help
+		Enables debug messages on the debug console for selected lwIP
+		message types.
 
 if LWIP_DEBUG
 config LWIP_MAINLOOP_DEBUG
 	bool "Mainloop"
 	default n
+	help
+		Enables TCP_IP_DEBUG, TIMERS_DEBUG
 
 config LWIP_IF_DEBUG
 	bool "Netif"
 	default n
+	help
+		Enables ETHARP_DEBUG, NETIF_DEBUG
 
 config LWIP_IP_DEBUG
 	bool "IP"
 	default n
+	help
+		Enables IP_DEBUG, IP6_DEBUG, IP_REASS_DEBUG
 
 config LWIP_UDP_DEBUG
 	bool "UDP"
 	default n
+	help
+		Enables UDP_DEBUG
 
 config LWIP_TCP_DEBUG
 	bool "TCP"
 	default n
+	help
+		Enables TCP_DEBUG, TCP_FR_DEBUG, TCP_RTO_DEBUG, TCP_CWND_DEBUG,
+		TCP_WND_DEBUG, TCP_RST_DEBUG, TCP_QLEN_DEBUG, TCP_OUTPUT_DEBUG,
+		TCP_INPUT_DEBUG
 
 config LWIP_SYS_DEBUG
 	bool "System"
 	default n
+	help
+		Enables SYS_DEBUG, PBUF_DEBUG, MEM_DEBUG, MEMP_DEBUG
 
 config LWIP_API_DEBUG
-	bool "API"
+	bool "APIs"
 	default n
+	help
+		Enables SOCKETS_DEBUG, RAW_DEBUG, API_MSG_DEBUG, API_LIB_DEBUG
 
 config LWIP_SERVICE_DEBUG
-	bool "Service"
+	bool "Services"
 	default n
+	help
+		Enables ETHARP_DEBUG, DNS_DEBUG, AUTOIP_DEBUG, DHCP_DEBUG,
+		ICMP_DEBUG, SNMP_DEBUG, SNMP_MSG_DEBUG, SNMP_MIB_DEBUG
 endif
 endif
