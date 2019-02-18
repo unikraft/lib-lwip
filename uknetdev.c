@@ -142,7 +142,7 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	 *       yet. As long as we do not have this, we have to copy.
 	 */
 	wpos = nb->data;
-	for (q = p; q != NULL; q = p->next) {
+	for (q = p; q != NULL; q = q->next) {
 		memcpy(wpos, q->payload, q->len);
 		wpos += q->len;
 	}
