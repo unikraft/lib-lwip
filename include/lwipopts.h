@@ -194,6 +194,16 @@ void sys_free(void *ptr);
 #define FD_SET
 #endif
 
+/* Stop lwip to provide icovec */
+#include <sys/uio.h>
+
+/*
+ * We need to stop lwip introducing `struct iovec` because it is provided by
+ * our libc already. The only way lwip allows us to do this is to define iovec
+ * as iovec. This keeps depending definitions of lwip still working.
+ */
+#define iovec iovec
+
 /*
  * disable BSD-style socket interface
  * We will provide the layer with socket.c|unikraft
