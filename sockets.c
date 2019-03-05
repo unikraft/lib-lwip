@@ -112,7 +112,7 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 
 	/* Put things together, and fill out necessary fields */
 	file->vfscore_file.fd = vfs_fd;
-	file->vfscore_file.f_flags = FWRITE | FREAD;
+	file->vfscore_file.f_flags = UK_FWRITE | UK_FREAD;
 	file->vfscore_file.f_count = 1;
 	file->vfscore_file.f_dentry = s_dentry;
 
