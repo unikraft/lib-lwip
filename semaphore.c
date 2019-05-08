@@ -85,10 +85,18 @@ u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout)
 {
 	__nsec nsret;
 
-	nsret = uk_semaphore_down_to(&sem->sem,
-				     ukarch_time_msec_to_nsec((__nsec)
-							      timeout));
-	if (unlikely(nsret == __NSEC_MAX))
-		return SYS_ARCH_TIMEOUT;
+	uk_pr_debug("sys_arch_sem_wait(%p, %"PRIu32")\n", sem, timeout);
+	if (timeout == 0) {
+		nsret = ukplat_monotonic_clock();
+		uk_semaphore_down(&sem->sem);
+		nsret = ukplat_monotonic_clock() - nsret;
+	} else {
+		nsret = uk_semaphore_down_to(&sem->sem,
+					     ukarch_time_msec_to_nsec((__nsec)
+								      timeout));
+		if (unlikely(nsret == __NSEC_MAX))
+			return SYS_ARCH_TIMEOUT;
+	}
+
 	return (u32_t) ukarch_time_nsec_to_msec(nsret);
 }

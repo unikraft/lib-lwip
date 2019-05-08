@@ -130,10 +130,17 @@ u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout)
 
 	UK_ASSERT(sys_mbox_valid(mbox));
 
-	nsret = uk_mbox_recv_to(mbox->mbox, msg,
-				ukarch_time_msec_to_nsec((__nsec) timeout));
-	if (unlikely(nsret == __NSEC_MAX))
-		return SYS_ARCH_TIMEOUT;
+	if (timeout == 0) {
+		nsret = ukplat_monotonic_clock();
+		uk_mbox_recv(mbox->mbox, msg);
+		nsret = ukplat_monotonic_clock() - nsret;
+	} else {
+		nsret = uk_mbox_recv_to(mbox->mbox, msg,
+					ukarch_time_msec_to_nsec((__nsec)
+								 timeout));
+		if (unlikely(nsret == __NSEC_MAX))
+			return SYS_ARCH_TIMEOUT;
+	}
 	return (u32_t) ukarch_time_nsec_to_msec(nsret);
 }
 
