@@ -50,7 +50,6 @@
 
 #define ioctl(s, cmd, argp) lwip_ioctl(s, cmd, argp)
 
-#ifdef CONFIG_LIBNOLIBC
 int socket(int domain, int type, int protocol);
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 int bind(int s, const struct sockaddr *name, socklen_t namelen);
@@ -69,6 +68,5 @@ int send(int s, const void *dataptr, size_t size, int flags);
 int sendmsg(int s, const struct msghdr *message, int flags);
 int sendto(int s, const void *dataptr, size_t size, int flags,
 	   const struct sockaddr *to, socklen_t tolen);
-#endif /* CONFIG_LIBNOLIBC */
 
 #endif /* _UK_LWIP_SOCKET_H_ */
