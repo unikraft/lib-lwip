@@ -34,6 +34,10 @@
 #ifndef _UK_LWIP_SOCKET_H_
 
 #include <uk/config.h>
+#if CONFIG_HAVE_LIBC
+#include <fcntl.h>
+#include <poll.h>
+#endif
 #include <lwip/sockets.h>
 
 #ifndef SOCK_CLOEXEC
