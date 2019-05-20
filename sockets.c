@@ -65,6 +65,12 @@ static inline struct sock_net_file *sock_net_file_get(int fd)
 		file = ERR2PTR(-EINVAL);
 		goto EXIT;
 	}
+	if (fos->f_dentry->d_vnode->v_type != VSOCK) {
+		LWIP_DEBUGF(SOCKETS_DEBUG,
+			    ("file descriptor is not a socket\n"));
+		file = ERR2PTR(-EBADF);
+		goto EXIT;
+	}
 	file = __containerof(fos, struct sock_net_file, vfscore_file);
 EXIT:
 	return file;
@@ -122,6 +128,7 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 	uk_mutex_init(&s_vnode->v_lock);
 	s_vnode->v_refcnt = 1;
 	s_vnode->v_data = file;
+	s_vnode->v_type = VSOCK;
 
 	file->sock_fd = sock_fd;
 	LWIP_DEBUGF(SOCKETS_DEBUG, ("Allocated socket %d (%x)\n",
