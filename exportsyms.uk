@@ -6,6 +6,7 @@ getsockname
 getsockopt
 liblwip_init
 listen
+lwip_ioctl
 lwip_htonl
 lwip_htons
 lwip_select

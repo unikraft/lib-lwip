@@ -48,6 +48,8 @@
 #define SOCK_NONBLOCK   0x20000000
 #endif
 
+#define ioctl(s, cmd, argp) lwip_ioctl(s, cmd, argp)
+
 #ifdef CONFIG_LIBNOLIBC
 int socket(int domain, int type, int protocol);
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
