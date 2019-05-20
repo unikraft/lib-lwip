@@ -9,7 +9,7 @@ listen
 lwip_ioctl
 lwip_htonl
 lwip_htons
-lwip_select
+poll
 recv
 recvfrom
 select

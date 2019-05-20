@@ -333,6 +333,143 @@ EXIT:
 	return ret;
 }
 
+int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+{
+	unsigned int i;
+	struct sock_net_file *file;
+	struct pollfd lwip_fds[nfds];
+
+	for (i = 0; i < nfds; i++) {
+		if (fds[i].fd < 0)
+			lwip_fds[i].fd = fds[i].fd;
+		else {
+			file = sock_net_file_get(fds[i].fd);
+			if (PTRISERR(file)) {
+				LWIP_DEBUGF(SOCKETS_DEBUG,
+					    ("failed to identify socket descriptor\n"));
+				/* Setting the errno */
+				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				return -1;
+			}
+			lwip_fds[i].fd = file->sock_fd;
+			lwip_fds[i].events = fds[i].events;
+		}
+	}
+
+	lwip_poll(lwip_fds, nfds, timeout);
+
+	for (i = 0; i < nfds; i++) {
+		if (fds[i].fd < 0)
+			fds[i].revents = 0;
+		else
+			fds[i].revents = lwip_fds[i].revents;
+	}
+	return 0;
+}
+
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+		struct timeval *timeout)
+{
+	uint64_t nsecs;
+	fd_set rd, wr, xc;
+	int i, ret, maxfd;
+	struct sock_net_file *file;
+
+	if (nfds == 0 && timeout != NULL) {
+		nsecs = timeout->tv_sec * 1000000000;
+		nsecs += timeout->tv_usec * 1000;
+		uk_sched_thread_sleep(nsecs);
+		return 0;
+	}
+
+	/* translate the public (vfscore) fds into lwIP socket fds */
+	FD_ZERO(&rd);
+	FD_ZERO(&wr);
+	FD_ZERO(&xc);
+	maxfd = 0;
+	for (i = 0; i < nfds; i++) {
+		if (readfds && FD_ISSET(i, readfds)) {
+			maxfd = i;
+			file = sock_net_file_get(i);
+			if (PTRISERR(file)) {
+				LWIP_DEBUGF(SOCKETS_DEBUG,
+					    ("failed to identify socket descriptor\n"));
+				ret = -1;
+				/* Setting the errno */
+				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				goto EXIT;
+			}
+			FD_SET(file->sock_fd, &rd);
+		}
+		if (writefds && FD_ISSET(i, writefds)) {
+			maxfd = i;
+			file = sock_net_file_get(i);
+			if (PTRISERR(file)) {
+				LWIP_DEBUGF(SOCKETS_DEBUG,
+					    ("failed to identify socket descriptor\n"));
+				ret = -1;
+				/* Setting the errno */
+				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				goto EXIT;
+			}
+			FD_SET(file->sock_fd, &wr);
+		}
+		if (exceptfds && FD_ISSET(i, exceptfds)) {
+			maxfd = i;
+			file = sock_net_file_get(i);
+			if (PTRISERR(file)) {
+				LWIP_DEBUGF(SOCKETS_DEBUG,
+					    ("failed to identify socket descriptor\n"));
+				ret = -1;
+				/* Setting the errno */
+				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				goto EXIT;
+			}
+			FD_SET(file->sock_fd, &xc);
+		}
+	}
+
+	ret = lwip_select(maxfd+1, &rd, &wr, &xc, timeout);
+	if (ret < 0)
+		return ret;
+
+	/* translate back from lwIP socket fds to public (vfscore) fds.
+	 * But there's no way to go from lwIP to vfscore, so iterate over
+	 * everything again. Check which ones were set originally, and if
+	 * they aren't also set in lwip_select()'s return, clear them.
+	 */
+	for (i = 0; i < nfds; i++) {
+		if (readfds && FD_ISSET(i, readfds)) {
+			/* This lookup can't fail, or it would already have
+			 * failed during the translation above.
+			 */
+			file = sock_net_file_get(i);
+			if (!FD_ISSET(file->sock_fd, &rd))
+				FD_CLR(i, readfds);
+		}
+		if (writefds && FD_ISSET(i, writefds)) {
+			/* This lookup can't fail, or it would already have
+			 * failed during the translation above.
+			 */
+			file = sock_net_file_get(i);
+			if (!FD_ISSET(file->sock_fd, &wr))
+				FD_CLR(i, writefds);
+		}
+		if (exceptfds && FD_ISSET(i, exceptfds)) {
+			/* This lookup can't fail, or it would already have
+			 * failed during the translation above.
+			 */
+			file = sock_net_file_get(i);
+			if (!FD_ISSET(file->sock_fd, &xc))
+				FD_CLR(i, exceptfds);
+		}
+	}
+	return 0;
+
+EXIT:
+	return ret;
+}
+
 int shutdown(int s, int how)
 {
 	int ret = 0;
