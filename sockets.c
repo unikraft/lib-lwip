@@ -169,8 +169,6 @@ static int sock_net_close(struct vnode *s_vnode,
 
 	/* Close and release the lwip socket */
 	ret = lwip_close(file->sock_fd);
-	/* Release the file descriptor number */
-	vfscore_put_fd(file->vfscore_file.fd);
 	/* Free socket vnode */
 	uk_free(uk_alloc_get_default(), file->vfscore_file.f_dentry->d_vnode);
 	/* Free socket dentry */
