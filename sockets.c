@@ -335,7 +335,7 @@ EXIT:
 
 int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 {
-	unsigned int i;
+	unsigned int i, ret;
 	struct sock_net_file *file;
 	struct pollfd lwip_fds[nfds];
 
@@ -347,16 +347,20 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 			if (PTRISERR(file)) {
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
+				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
-				return -1;
+				goto EXIT;
 			}
 			lwip_fds[i].fd = file->sock_fd;
 			lwip_fds[i].events = fds[i].events;
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 	}
 
-	lwip_poll(lwip_fds, nfds, timeout);
+	ret = lwip_poll(lwip_fds, nfds, timeout);
+	if (ret < 0)
+		goto EXIT;
 
 	for (i = 0; i < nfds; i++) {
 		if (fds[i].fd < 0)
@@ -364,7 +368,9 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 		else
 			fds[i].revents = lwip_fds[i].revents;
 	}
-	return 0;
+
+EXIT:
+	return ret;
 }
 
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
@@ -400,6 +406,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				goto EXIT;
 			}
 			FD_SET(file->sock_fd, &rd);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (writefds && FD_ISSET(i, writefds)) {
 			maxfd = i;
@@ -413,6 +420,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				goto EXIT;
 			}
 			FD_SET(file->sock_fd, &wr);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
 			maxfd = i;
@@ -426,12 +434,13 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				goto EXIT;
 			}
 			FD_SET(file->sock_fd, &xc);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 	}
 
 	ret = lwip_select(maxfd+1, &rd, &wr, &xc, timeout);
 	if (ret < 0)
-		return ret;
+		goto EXIT;
 
 	/* translate back from lwIP socket fds to public (vfscore) fds.
 	 * But there's no way to go from lwIP to vfscore, so iterate over
@@ -446,6 +455,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &rd))
 				FD_CLR(i, readfds);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (writefds && FD_ISSET(i, writefds)) {
 			/* This lookup can't fail, or it would already have
@@ -454,6 +464,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &wr))
 				FD_CLR(i, writefds);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
 			/* This lookup can't fail, or it would already have
@@ -462,9 +473,9 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &xc))
 				FD_CLR(i, exceptfds);
+			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 	}
-	return 0;
 
 EXIT:
 	return ret;
