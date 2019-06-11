@@ -48,6 +48,10 @@
 #define SOCK_NONBLOCK   0x20000000
 #endif
 
+#ifndef SOCK_SEQPACKET
+#define SOCK_SEQPACKET 5
+#endif
+
 #define ioctl(s, cmd, argp) lwip_ioctl(s, cmd, argp)
 
 int socket(int domain, int type, int protocol);
