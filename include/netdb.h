@@ -1,3 +1,11 @@
+#if !(LWIP_COMPAT_SOCKETS)
+
+#define gethostbyname(name) lwip_gethostbyname(name)
+#define gethostbyname_r(name, ret, buf, buflen, result, h_errnop) \
+       lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop)
+
+#endif /* !(LWIP_COMPAT_SOCKETS) */
+
 #include <compat/posix/netdb.h>
 
 struct servent {
