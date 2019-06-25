@@ -26,3 +26,8 @@ ip4addr_ntoa
 ipaddr_addr
 ip4addr_ntoa
 h_errno
+endprotoent
+setprotoent
+getprotoent
+getprotobyname
+getprotobynumber
