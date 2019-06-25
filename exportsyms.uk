@@ -31,3 +31,4 @@ setprotoent
 getprotoent
 getprotobyname
 getprotobynumber
+gethostbyaddr
