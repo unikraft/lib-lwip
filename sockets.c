@@ -335,7 +335,8 @@ EXIT:
 
 int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 {
-	unsigned int i, ret;
+	int ret;
+	unsigned int i;
 	struct sock_net_file *file;
 	struct pollfd lwip_fds[nfds];
 
@@ -395,7 +396,6 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 	maxfd = 0;
 	for (i = 0; i < nfds; i++) {
 		if (readfds && FD_ISSET(i, readfds)) {
-			maxfd = i;
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
 				LWIP_DEBUGF(SOCKETS_DEBUG,
@@ -405,11 +405,12 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
 			}
+			if (maxfd < file->sock_fd)
+				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &rd);
 			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (writefds && FD_ISSET(i, writefds)) {
-			maxfd = i;
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
 				LWIP_DEBUGF(SOCKETS_DEBUG,
@@ -419,11 +420,12 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
 			}
+			if (maxfd < file->sock_fd)
+				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &wr);
 			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
-			maxfd = i;
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
 				LWIP_DEBUGF(SOCKETS_DEBUG,
@@ -433,6 +435,8 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
 			}
+			if (maxfd < file->sock_fd)
+				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &xc);
 			vfscore_put_file(&file->vfscore_file); /* release refcount */
 		}
