@@ -139,6 +139,7 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 	vfs_file->f_count = 1;
 	vfs_file->f_data = file;
 	vfs_file->f_dentry = s_dentry;
+	vfs_file->f_vfs_flags = UK_VFSCORE_NOPOS;
 
 	s_dentry->d_refcnt = 1;
 	s_dentry->d_vnode = s_vnode;
@@ -225,7 +226,7 @@ static int sock_net_close(struct vnode *s_vnode,
 	return ret;
 }
 
-static ssize_t sock_net_write(struct vnode *s_vnode,
+static int sock_net_write(struct vnode *s_vnode,
 			      struct uio *buf, int ioflag __unused)
 {
 	int ret = 0;
@@ -237,10 +238,15 @@ static ssize_t sock_net_write(struct vnode *s_vnode,
 				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_writev(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
-	return ret;
+	/* lwip sets errno and returns -1 in case of error */
+	if (ret < 0)
+		return ret;
+
+	buf->uio_resid -= ret;
+	return 0;
 }
 
-static ssize_t sock_net_read(struct vnode *s_vnode,
+static int sock_net_read(struct vnode *s_vnode,
 			     struct vfscore_file *vfscore_file __unused,
 			     struct uio *buf, int ioflag __unused)
 {
@@ -253,7 +259,12 @@ static ssize_t sock_net_read(struct vnode *s_vnode,
 				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_readv(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
-	return ret;
+	/* lwip sets errno and returns -1 in case of error */
+	if (ret < 0)
+		return ret;
+
+	buf->uio_resid -= ret;
+	return 0;
 }
 
 #define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
