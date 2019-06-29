@@ -237,8 +237,17 @@ static int sock_net_close(struct vnode *s_vnode,
 	/*
 	 * Free socket file
 	 * The rest of the resources will be freed by vfs
+	 *
+	 * TODO: vfs ignores close errors right now, so free our file
 	 */
 	uk_free(uk_alloc_get_default(), file);
+
+	/*
+	 * lwip sets errno and returns -1 in case of error, but
+	 * vfs expects us to return a positive errno
+	 */
+	if (ret < 0)
+		return errno;
 
 	return ret;
 }
@@ -255,9 +264,12 @@ static int sock_net_write(struct vnode *s_vnode,
 				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_writev(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
-	/* lwip sets errno and returns -1 in case of error */
+	/*
+	 * lwip sets errno and returns -1 in case of error, but
+	 * vfs expects us to return a positive errno
+	 */
 	if (ret < 0)
-		return ret;
+		return errno;
 
 	buf->uio_resid -= ret;
 	return 0;
@@ -276,9 +288,12 @@ static int sock_net_read(struct vnode *s_vnode,
 				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_readv(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
-	/* lwip sets errno and returns -1 in case of error */
+	/*
+	 * lwip sets errno and returns -1 in case of error, but
+	 * vfs expects us to return a positive errno
+	 */
 	if (ret < 0)
-		return ret;
+		return errno;
 
 	buf->uio_resid -= ret;
 	return 0;
