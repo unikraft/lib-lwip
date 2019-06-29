@@ -35,6 +35,7 @@
 
 /* network stub calls */
 #include <sys/time.h>
+#include <vfscore/dentry.h>
 #include <vfscore/file.h>
 #include <vfscore/fs.h>
 #include <vfscore/mount.h>
@@ -49,13 +50,38 @@
 #define SOCK_NET_SET_ERRNO(errcode) \
 	(errno = -(errcode))
 
+static int sock_net_close(struct vnode *s_vnode,
+			struct vfscore_file *vfscore_file);
+static int sock_net_write(struct vnode *s_vnode,
+			struct uio *buf, int ioflag __unused);
+static int sock_net_read(struct vnode *s_vnode,
+			struct vfscore_file *vfscore_file __unused,
+			struct uio *buf, int ioflag __unused);
+
+#define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
+
+static struct vnops sock_net_vnops = {
+	.vop_close = sock_net_close,
+	.vop_write = sock_net_write,
+	.vop_read  = sock_net_read,
+	.vop_inactive = sock_net_inactive
+};
+
+#define sock_net_vget  ((vfsop_vget_t) vfscore_vop_nullop)
+
+static struct vfsops sock_net_vfsops = {
+	.vfs_vget = sock_net_vget,
+	.vfs_vnops = &sock_net_vnops
+};
+
+
+static uint64_t s_inode = 0;
 /*
  * Bogus mount point used by all sockets
- *
- * We need this because when deleting a vnode
- * vfs calls vfs_unbusy on its mount point
  */
-static struct mount s_mount;
+static struct mount s_mount = {
+	.m_op = &sock_net_vfsops
+};
 
 struct sock_net_file {
 	struct vfscore_file *vfscore_file;
@@ -85,7 +111,7 @@ EXIT:
 	return file;
 }
 
-static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
+static int sock_fd_alloc(int sock_fd)
 {
 	int ret = 0;
 	int vfs_fd;
@@ -118,19 +144,30 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 				("Failed to allocate socket vfs_file: Out of memory\n"));
 		goto ERR_MALLOC_VFS_FILE;
 	}
-	s_dentry = uk_calloc(uk_alloc_get_default(), 1, sizeof(*s_dentry));
-	if (!s_dentry) {
-		ret = -ENOMEM;
-		LWIP_DEBUGF(SOCKETS_DEBUG,
-			    ("Failed to allocate socket dentry: Out of memory\n"));
-		goto ERR_MALLOC_DENTRY;
-	}
-	s_vnode = uk_calloc(uk_alloc_get_default(), 1, sizeof(*s_vnode));
+
+	ret = vfscore_vget(&s_mount, s_inode++, &s_vnode);
+	UK_ASSERT(ret == 0); /* we should not find it in cache */
+
 	if (!s_vnode) {
 		ret = -ENOMEM;
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("Failed to allocate socket vnode: Out of memory\n"));
-		goto ERR_MALLOC_VNODE;
+		goto ERR_ALLOC_VNODE;
+	}
+
+	uk_mutex_unlock(&s_vnode->v_lock);
+
+	/*
+	 * it doesn't matter that all the dentries have the
+	 * same path since we never lookup for them
+	 */
+	s_dentry = dentry_alloc(NULL, s_vnode, "/");
+
+	if (!s_dentry) {
+		ret = -ENOMEM;
+		LWIP_DEBUGF(SOCKETS_DEBUG,
+			    ("Failed to allocate socket dentry: Out of memory\n"));
+		goto ERR_ALLOC_DENTRY;
 	}
 
 	/* Put things together, and fill out necessary fields */
@@ -141,31 +178,8 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 	vfs_file->f_dentry = s_dentry;
 	vfs_file->f_vfs_flags = UK_VFSCORE_NOPOS;
 
-	s_dentry->d_refcnt = 1;
-	s_dentry->d_vnode = s_vnode;
-
-	/*
-	 * Provide bogus but valid addresses to allow
-	 * vfs to remove nodes from lists
-	 */
-	s_dentry->d_link.pprev = &s_dentry->d_link.next;
-	s_dentry->d_names_link.next = &s_dentry->d_names_link;
-	s_dentry->d_names_link.prev = &s_dentry->d_names_link;
-
-	s_vnode->v_op = v_op;
-	uk_mutex_init(&s_vnode->v_lock);
-	s_vnode->v_refcnt = 1;
 	s_vnode->v_data = file;
 	s_vnode->v_type = VSOCK;
-	s_vnode->v_mount = &s_mount;
-	s_mount.m_count++;
-
-	/*
-	 * Provide bogus but valid addresses to allow
-	 * vfs to remove nodes from lists
-	 */
-	s_vnode->v_link.next = &s_vnode->v_link;
-	s_vnode->v_link.prev = &s_vnode->v_link;
 
 	file->vfscore_file = vfs_file;
 	file->sock_fd = sock_fd;
@@ -181,14 +195,17 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 		goto ERR_VFS_INSTALL;
 	}
 
+	/* Only the dentry should hold a reference; release ours */
+	vrele(s_vnode);
+
 	/* Return file descriptor of our socket */
 	return vfs_fd;
 
 ERR_VFS_INSTALL:
-	uk_free(uk_alloc_get_default(), s_vnode);
-ERR_MALLOC_VNODE:
-	uk_free(uk_alloc_get_default(), s_dentry);
-ERR_MALLOC_DENTRY:
+	drele(s_dentry);
+ERR_ALLOC_DENTRY:
+	vrele(s_vnode);
+ERR_ALLOC_VNODE:
 	uk_free(uk_alloc_get_default(), vfs_file);
 ERR_MALLOC_VFS_FILE:
 	uk_free(uk_alloc_get_default(), file);
@@ -200,7 +217,7 @@ ERR_EXIT:
 }
 
 static int sock_net_close(struct vnode *s_vnode,
-			  struct vfscore_file *vfscore_file)
+			struct vfscore_file *vfscore_file)
 {
 	int ret;
 	struct sock_net_file *file = NULL;
@@ -227,7 +244,7 @@ static int sock_net_close(struct vnode *s_vnode,
 }
 
 static int sock_net_write(struct vnode *s_vnode,
-			      struct uio *buf, int ioflag __unused)
+			struct uio *buf, int ioflag __unused)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -247,8 +264,8 @@ static int sock_net_write(struct vnode *s_vnode,
 }
 
 static int sock_net_read(struct vnode *s_vnode,
-			     struct vfscore_file *vfscore_file __unused,
-			     struct uio *buf, int ioflag __unused)
+			struct vfscore_file *vfscore_file __unused,
+			struct uio *buf, int ioflag __unused)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -267,15 +284,6 @@ static int sock_net_read(struct vnode *s_vnode,
 	return 0;
 }
 
-#define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
-
-static struct vnops sock_net_fops = {
-	.vop_close = sock_net_close,
-	.vop_write = sock_net_write,
-	.vop_read  = sock_net_read,
-	.vop_inactive = sock_net_inactive
-};
-
 int socket(int domain, int type, int protocol)
 {
 	int ret = 0;
@@ -292,7 +300,7 @@ int socket(int domain, int type, int protocol)
 	}
 
 	/* Allocate the file descriptor */
-	vfs_fd = sock_fd_alloc(&sock_net_fops, sock_fd);
+	vfs_fd = sock_fd_alloc(sock_fd);
 	if (vfs_fd < 0) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to allocate descriptor %d\n",
@@ -339,7 +347,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	}
 
 	/* Allocate the file descriptor for the accepted connection */
-	vfs_fd = sock_fd_alloc(&sock_net_fops, sock_fd);
+	vfs_fd = sock_fd_alloc(sock_fd);
 	if (vfs_fd < 0) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to allocate descriptor for accepted connection\n"));
