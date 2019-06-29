@@ -57,6 +57,10 @@ static int sock_net_write(struct vnode *s_vnode,
 static int sock_net_read(struct vnode *s_vnode,
 			struct vfscore_file *vfscore_file __unused,
 			struct uio *buf, int ioflag __unused);
+static int sock_net_ioctl(struct vnode *s_vnode,
+			struct vfscore_file *vfscore_file __unused,
+			unsigned long request,
+			void *buf);
 
 #define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
 
@@ -64,6 +68,7 @@ static struct vnops sock_net_vnops = {
 	.vop_close = sock_net_close,
 	.vop_write = sock_net_write,
 	.vop_read  = sock_net_read,
+	.vop_ioctl = sock_net_ioctl,
 	.vop_inactive = sock_net_inactive
 };
 
@@ -297,6 +302,21 @@ static int sock_net_read(struct vnode *s_vnode,
 
 	buf->uio_resid -= ret;
 	return 0;
+}
+
+static int sock_net_ioctl(struct vnode *s_vnode,
+			struct vfscore_file *vfscore_file __unused,
+			unsigned long request,
+			void *buf)
+{
+	struct sock_net_file *file = NULL;
+
+	file = s_vnode->v_data;
+	LWIP_DEBUGF(SOCKETS_DEBUG, ("%s fd:%d lwip_fd:%d\n",
+				    __func__,
+				    file->vfscore_file->fd,
+				    file->sock_fd));
+	return lwip_ioctl(file->sock_fd, request, buf);
 }
 
 int socket(int domain, int type, int protocol)
