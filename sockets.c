@@ -37,6 +37,7 @@
 #include <sys/time.h>
 #include <vfscore/file.h>
 #include <vfscore/fs.h>
+#include <vfscore/mount.h>
 #include <vfscore/vnode.h>
 #include <uk/alloc.h>
 #include <uk/essentials.h>
@@ -48,8 +49,16 @@
 #define SOCK_NET_SET_ERRNO(errcode) \
 	(errno = -(errcode))
 
+/*
+ * Bogus mount point used by all sockets
+ *
+ * We need this because when deleting a vnode
+ * vfs calls vfs_unbusy on its mount point
+ */
+static struct mount s_mount;
+
 struct sock_net_file {
-	struct vfscore_file vfscore_file;
+	struct vfscore_file *vfscore_file;
 	int sock_fd;
 };
 
@@ -58,7 +67,7 @@ static inline struct sock_net_file *sock_net_file_get(int fd)
 	struct sock_net_file *file = NULL;
 	struct vfscore_file *fos;
 
-	fos  = vfscore_get_file(fd);
+	fos = vfscore_get_file(fd);
 	if (!fos) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed with invalid descriptor\n"));
@@ -71,7 +80,7 @@ static inline struct sock_net_file *sock_net_file_get(int fd)
 		file = ERR2PTR(-EBADF);
 		goto EXIT;
 	}
-	file = __containerof(fos, struct sock_net_file, vfscore_file);
+	file = fos->f_data;
 EXIT:
 	return file;
 }
@@ -81,6 +90,7 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 	int ret = 0;
 	int vfs_fd;
 	struct sock_net_file *file = NULL;
+	struct vfscore_file *vfs_file = NULL;
 	struct dentry *s_dentry;
 	struct vnode *s_vnode;
 
@@ -101,6 +111,13 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 			    ("Failed to allocate socket file: Out of memory\n"));
 		goto ERR_MALLOC_FILE;
 	}
+	vfs_file = uk_calloc(uk_alloc_get_default(), 1, sizeof(*vfs_file));
+	if (!vfs_file) {
+		ret = -ENOMEM;
+		LWIP_DEBUGF(SOCKETS_DEBUG,
+				("Failed to allocate socket vfs_file: Out of memory\n"));
+		goto ERR_MALLOC_VFS_FILE;
+	}
 	s_dentry = uk_calloc(uk_alloc_get_default(), 1, sizeof(*s_dentry));
 	if (!s_dentry) {
 		ret = -ENOMEM;
@@ -117,26 +134,46 @@ static int sock_fd_alloc(struct vnops *v_op, int sock_fd)
 	}
 
 	/* Put things together, and fill out necessary fields */
-	file->vfscore_file.fd = vfs_fd;
-	file->vfscore_file.f_flags = UK_FWRITE | UK_FREAD;
-	file->vfscore_file.f_count = 1;
-	file->vfscore_file.f_dentry = s_dentry;
+	vfs_file->fd = vfs_fd;
+	vfs_file->f_flags = UK_FWRITE | UK_FREAD;
+	vfs_file->f_count = 1;
+	vfs_file->f_data = file;
+	vfs_file->f_dentry = s_dentry;
 
+	s_dentry->d_refcnt = 1;
 	s_dentry->d_vnode = s_vnode;
+
+	/*
+	 * Provide bogus but valid addresses to allow
+	 * vfs to remove nodes from lists
+	 */
+	s_dentry->d_link.pprev = &s_dentry->d_link.next;
+	s_dentry->d_names_link.next = &s_dentry->d_names_link;
+	s_dentry->d_names_link.prev = &s_dentry->d_names_link;
 
 	s_vnode->v_op = v_op;
 	uk_mutex_init(&s_vnode->v_lock);
 	s_vnode->v_refcnt = 1;
 	s_vnode->v_data = file;
 	s_vnode->v_type = VSOCK;
+	s_vnode->v_mount = &s_mount;
+	s_mount.m_count++;
 
+	/*
+	 * Provide bogus but valid addresses to allow
+	 * vfs to remove nodes from lists
+	 */
+	s_vnode->v_link.next = &s_vnode->v_link;
+	s_vnode->v_link.prev = &s_vnode->v_link;
+
+	file->vfscore_file = vfs_file;
 	file->sock_fd = sock_fd;
 	LWIP_DEBUGF(SOCKETS_DEBUG, ("Allocated socket %d (%x)\n",
-				    file->vfscore_file.fd,
+				    file->vfscore_file->fd,
 				    file->sock_fd));
 
 	/* Storing the information within the vfs structure */
-	ret = vfscore_install_fd(vfs_fd, &file->vfscore_file);
+	ret = vfscore_install_fd(vfs_fd, file->vfscore_file);
 	if (ret) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("Failed to install socket fd\n"));
@@ -151,6 +188,8 @@ ERR_VFS_INSTALL:
 ERR_MALLOC_VNODE:
 	uk_free(uk_alloc_get_default(), s_dentry);
 ERR_MALLOC_DENTRY:
+	uk_free(uk_alloc_get_default(), vfs_file);
+ERR_MALLOC_VFS_FILE:
 	uk_free(uk_alloc_get_default(), file);
 ERR_MALLOC_FILE:
 	vfscore_put_fd(vfs_fd);
@@ -160,15 +199,15 @@ ERR_EXIT:
 }
 
 static int sock_net_close(struct vnode *s_vnode,
-			  struct vfscore_file *vfscore_file __maybe_unused)
+			  struct vfscore_file *vfscore_file)
 {
-	int ret = 0;
+	int ret;
 	struct sock_net_file *file = NULL;
 
 	file = s_vnode->v_data;
 	LWIP_DEBUGF(SOCKETS_DEBUG, ("%s fd:%d lwip_fd:%d\n",
 				    __func__,
-				    file->vfscore_file.fd,
+				    file->vfscore_file->fd,
 				    file->sock_fd));
 
 	UK_ASSERT(vfscore_file->f_dentry->d_vnode == s_vnode);
@@ -176,12 +215,13 @@ static int sock_net_close(struct vnode *s_vnode,
 
 	/* Close and release the lwip socket */
 	ret = lwip_close(file->sock_fd);
-	/* Free socket vnode */
-	uk_free(uk_alloc_get_default(), file->vfscore_file.f_dentry->d_vnode);
-	/* Free socket dentry */
-	uk_free(uk_alloc_get_default(), file->vfscore_file.f_dentry);
-	/* Free socket file */
+
+	/*
+	 * Free socket file
+	 * The rest of the resources will be freed by vfs
+	 */
 	uk_free(uk_alloc_get_default(), file);
+
 	return ret;
 }
 
@@ -194,7 +234,7 @@ static ssize_t sock_net_write(struct vnode *s_vnode,
 	file = s_vnode->v_data;
 	LWIP_DEBUGF(SOCKETS_DEBUG, ("%s fd:%d lwip_fd:%d\n",
 				    __func__,
-				    file->vfscore_file.fd,
+				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_writev(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
 	return ret;
@@ -210,16 +250,19 @@ static ssize_t sock_net_read(struct vnode *s_vnode,
 	file = s_vnode->v_data;
 	LWIP_DEBUGF(SOCKETS_DEBUG, ("%s fd:%d lwip_fd:%d\n",
 				    __func__,
-				    file->vfscore_file.fd,
+				    file->vfscore_file->fd,
 				    file->sock_fd));
 	ret = lwip_readv(file->sock_fd, buf->uio_iov, buf->uio_iovcnt);
 	return ret;
 }
 
+#define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
+
 static struct vnops sock_net_fops = {
 	.vop_close = sock_net_close,
 	.vop_write = sock_net_write,
 	.vop_read  = sock_net_read,
+	.vop_inactive = sock_net_inactive
 };
 
 int socket(int domain, int type, int protocol)
@@ -296,7 +339,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	}
 	ret = vfs_fd;
 EXIT_FDROP:
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 
@@ -328,7 +371,7 @@ int bind(int s, const struct sockaddr *name, socklen_t namelen)
 		goto EXIT_FDROP;
 	}
 EXIT_FDROP:
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -355,7 +398,7 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 			}
 			lwip_fds[i].fd = file->sock_fd;
 			lwip_fds[i].events = fds[i].events;
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 	}
 
@@ -408,7 +451,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &rd);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 		if (writefds && FD_ISSET(i, writefds)) {
 			file = sock_net_file_get(i);
@@ -423,7 +466,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &wr);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
 			file = sock_net_file_get(i);
@@ -438,7 +481,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
 			FD_SET(file->sock_fd, &xc);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 	}
 
@@ -459,7 +502,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &rd))
 				FD_CLR(i, readfds);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 		if (writefds && FD_ISSET(i, writefds)) {
 			/* This lookup can't fail, or it would already have
@@ -468,7 +511,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &wr))
 				FD_CLR(i, writefds);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
 			/* This lookup can't fail, or it would already have
@@ -477,7 +520,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 			file = sock_net_file_get(i);
 			if (!FD_ISSET(file->sock_fd, &xc))
 				FD_CLR(i, exceptfds);
-			vfscore_put_file(&file->vfscore_file); /* release refcount */
+			vfscore_put_file(file->vfscore_file); /* release refcount */
 		}
 	}
 
@@ -501,7 +544,7 @@ int shutdown(int s, int how)
 	}
 	/* Shutdown of the descriptor */
 	ret = lwip_shutdown(file->sock_fd, how);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -519,7 +562,7 @@ int getpeername(int s, struct sockaddr *name, socklen_t *namelen)
 		goto EXIT;
 	}
 	ret = lwip_getpeername(file->sock_fd, name, namelen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -537,7 +580,7 @@ int getsockname(int s, struct sockaddr *name, socklen_t *namelen)
 		goto EXIT;
 	}
 	ret = lwip_getsockname(file->sock_fd, name, namelen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -556,7 +599,7 @@ int getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 		goto EXIT;
 	}
 	ret = lwip_getsockopt(file->sock_fd, level, optname, optval, optlen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -576,7 +619,7 @@ int setsockopt(int s, int level, int optname, const void *optval,
 		goto EXIT;
 	}
 	ret = lwip_setsockopt(file->sock_fd, level, optname, optval, optlen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -595,7 +638,7 @@ int connect(int s, const struct sockaddr *name, socklen_t namelen)
 		goto EXIT;
 	}
 	ret = lwip_connect(file->sock_fd, name, namelen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -614,7 +657,7 @@ int listen(int s, int backlog)
 		goto EXIT;
 	}
 	ret = lwip_listen(file->sock_fd, backlog);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -633,7 +676,7 @@ int recv(int s, void *mem, size_t len, int flags)
 		goto EXIT;
 	}
 	ret = lwip_recv(file->sock_fd, mem, len, flags);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -653,7 +696,7 @@ int recvfrom(int s, void *mem, size_t len, int flags,
 		goto EXIT;
 	}
 	ret = lwip_recvfrom(file->sock_fd, mem, len, flags, from, fromlen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -672,7 +715,7 @@ int send(int s, const void *dataptr, size_t size, int flags)
 		goto EXIT;
 	}
 	ret = lwip_send(file->sock_fd, dataptr, size, flags);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -691,7 +734,7 @@ int sendmsg(int s, const struct msghdr *message, int flags)
 		goto EXIT;
 	}
 	ret = lwip_sendmsg(file->sock_fd, message, flags);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
@@ -711,7 +754,7 @@ int sendto(int s, const void *dataptr, size_t size, int flags,
 		goto EXIT;
 	}
 	ret = lwip_sendto(file->sock_fd, dataptr, size, flags, to, tolen);
-	vfscore_put_file(&file->vfscore_file); /* release refcount */
+	vfscore_put_file(file->vfscore_file); /* release refcount */
 EXIT:
 	return ret;
 }
