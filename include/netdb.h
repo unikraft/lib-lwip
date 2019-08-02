@@ -4,7 +4,11 @@
 
 #define gethostbyname(name) lwip_gethostbyname(name)
 #define gethostbyname_r(name, ret, buf, buflen, result, h_errnop) \
-       lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop)
+		lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop)
+
+#define freeaddrinfo(addrinfo) lwip_freeaddrinfo(addrinfo)
+#define getaddrinfo(nodname, servname, hints, res) \
+		lwip_getaddrinfo(nodname, servname, hints, res)
 
 #endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
 
@@ -20,3 +24,5 @@ struct protoent {
 	char    **p_aliases;    /* alias list */
 	int     p_proto;        /* protocol # */
 };
+
+const char *gai_strerror(int errcode);

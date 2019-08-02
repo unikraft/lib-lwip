@@ -35,3 +35,6 @@ getservbyname
 getservbyport
 inet_ntop
 inet_pton
+lwip_getaddrinfo
+lwip_freeaddrinfo
+gai_strerror

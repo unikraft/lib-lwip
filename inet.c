@@ -43,3 +43,26 @@ int inet_pton(int af, const char *src, void *dst)
 {
 	return lwip_inet_pton(af, src, dst);
 }
+
+/* Note: lwip implementation of getaddrinfo does not return all the errors
+ * codes mentioned in its man page.
+ */
+const char *gai_strerror(int errcode)
+{
+	switch (errcode) {
+#if LWIP_DNS_API_DEFINE_ERRORS
+	case EAI_NONAME:
+		return "The node or service is not known; or both node and service are NULL.";
+	case EAI_SERVICE:
+		return "The requested service is not available for the requested socket type.";
+	case EAI_FAIL:
+		return "The name server returned a permanent failure indication.";
+	case EAI_MEMORY:
+		return "Out of memory.";
+	case EAI_FAMILY:
+		return "The requested address family is not supported.";
+#endif /* LWIP_DNS_API_DEFINE_ERRORS */
+	default:
+		return "Error on getaddrinfo.";
+	}
+}
