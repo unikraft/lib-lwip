@@ -33,3 +33,5 @@ getprotobynumber
 gethostbyaddr
 getservbyname
 getservbyport
+inet_ntop
+inet_pton
