@@ -61,6 +61,8 @@ const char *gai_strerror(int errcode)
 		return "Out of memory.";
 	case EAI_FAMILY:
 		return "The requested address family is not supported.";
+	case EAI_OVERFLOW:
+		return "The buffer pointed to by host or serv was too small.";
 #endif /* LWIP_DNS_API_DEFINE_ERRORS */
 	default:
 		return "Error on getaddrinfo.";

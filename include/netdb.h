@@ -26,3 +26,26 @@ struct protoent {
 };
 
 const char *gai_strerror(int errcode);
+
+/*
+ * Constants for getnameinfo()
+ */
+#define NI_MAXHOST      1025
+#define NI_MAXSERV      32
+
+/*
+ * Flag values for getnameinfo()
+ */
+#define NI_NUMERICHOST  0x01
+#define NI_NUMERICSERV  0x02
+#define NI_NOFQDN       0x04
+#define NI_NAMEREQD     0x08
+#define NI_DGRAM        0x10
+#define NI_NUMERICSCOPE 0x20
+
+/* Error values for getaddrinfo() not defined by lwip/netdb.h */
+#define EAI_OVERFLOW    205      /* Argument buffer overflow.  */
+
+int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
+		char *host, socklen_t hostlen,
+		char *serv, socklen_t servlen, int flags);
