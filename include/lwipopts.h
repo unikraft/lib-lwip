@@ -187,6 +187,10 @@ void sys_free(void *ptr);
 #endif
 
 #if LWIP_SOCKET
+#if CONFIG_HAVE_LIBC
+/* Stop lwip to provide ioctl constants */
+#include <sys/ioctl.h>
+#endif
 /* Stop lwip to provide fd_set */
 #include <sys/select.h>
 
