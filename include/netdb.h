@@ -49,3 +49,6 @@ const char *gai_strerror(int errcode);
 int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
 		char *host, socklen_t hostlen,
 		char *serv, socklen_t servlen, int flags);
+
+struct servent *getservbyname(const char *name, const char *proto);
+struct servent *getservbyport(int port, const char *proto);
