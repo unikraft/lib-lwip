@@ -6,9 +6,10 @@
 #define gethostbyname_r(name, ret, buf, buflen, result, h_errnop) \
 		lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop)
 
-#define freeaddrinfo(addrinfo) lwip_freeaddrinfo(addrinfo)
-#define getaddrinfo(nodname, servname, hints, res) \
-		lwip_getaddrinfo(nodname, servname, hints, res)
+int getaddrinfo(const char *node, const char *service,
+		const struct addrinfo *hints,
+		struct addrinfo **res);
+void freeaddrinfo(struct addrinfo *res);
 
 #endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
 

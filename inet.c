@@ -44,6 +44,20 @@ int inet_pton(int af, const char *src, void *dst)
 	return lwip_inet_pton(af, src, dst);
 }
 
+#if LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS)
+int getaddrinfo(const char *node, const char *service,
+		const struct addrinfo *hints,
+		struct addrinfo **res)
+{
+	return lwip_getaddrinfo(node, service, hints, res);
+}
+
+void freeaddrinfo(struct addrinfo *res)
+{
+	return lwip_freeaddrinfo(res);
+}
+#endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
+
 /* Note: lwip implementation of getaddrinfo does not return all the errors
  * codes mentioned in its man page.
  */
