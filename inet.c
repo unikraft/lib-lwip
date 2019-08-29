@@ -31,6 +31,8 @@
  *
  * THIS HEADER MAY NOT BE EXTRACTED OR MODIFIED IN ANY WAY.
  */
+
+#include <sys/socket.h>
 #include <netdb.h>
 
 

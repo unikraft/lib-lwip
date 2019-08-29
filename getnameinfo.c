@@ -54,6 +54,7 @@
  * ----------------------------------------------------------------------
  */
 #include <stdio.h>
+#include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 
@@ -65,8 +66,10 @@ int getnameinfo(const struct sockaddr *restrict sa, socklen_t sl,
 	char buf[256];
 	/*unsigned char reply[512]; TODO used in DNS reply */
 	int af = sa->sa_family;
+#if CONFIG_LIBNEWLIBC /* because of fopen() */
 	char line[512];
 	FILE *f;
+#endif
 	unsigned char *a;
 
 	switch (af) {
@@ -86,6 +89,7 @@ int getnameinfo(const struct sockaddr *restrict sa, socklen_t sl,
 		return EAI_FAMILY;
 	}
 
+#if CONFIG_LIBNEWLIBC /* because of fopen() */
 	/* Try to find ip within /etc/hosts */
 	if ((node && nodelen) && (af == AF_INET)) {
 		const char *ipstr;
@@ -117,6 +121,7 @@ int getnameinfo(const struct sockaddr *restrict sa, socklen_t sl,
 		if (f)
 			fclose(f);
 	}
+#endif
 
 	if (node && nodelen) {
 		if ((flags & NI_NUMERICHOST)

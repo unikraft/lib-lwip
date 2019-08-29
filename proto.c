@@ -21,6 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>
 
