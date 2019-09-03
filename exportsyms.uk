@@ -1,6 +1,7 @@
 accept
 bind
 connect
+dns_gethostbyname
 endprotoent
 freeaddrinfo
 gai_strerror
