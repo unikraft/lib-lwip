@@ -7,6 +7,8 @@ freeaddrinfo
 gai_strerror
 getaddrinfo
 gethostbyaddr
+gethostbyname
+gethostbyname_r
 getnameinfo
 getpeername
 getprotobyname

@@ -33,10 +33,29 @@
 
 #include <unistd.h>
 #include <sys/socket.h>
+#include <netdb.h>
+
+
+#if LWIP_DNS && LWIP_SOCKET
+
+#if !(LWIP_COMPAT_SOCKETS)
+struct hostent *gethostbyname(const char *name)
+{
+	return lwip_gethostbyname(name);
+}
+
+int gethostbyname_r(const char *name,
+		struct hostent *ret, char *buf, size_t buflen,
+		struct hostent **result, int *h_errnop)
+{
+	return lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop);
+}
+#endif
 
 struct hostent *gethostbyaddr(const void *addr __unused,
 	socklen_t len __unused, int type __unused)
 {
 	return NULL;
 }
+#endif
 

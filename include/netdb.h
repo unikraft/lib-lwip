@@ -1,10 +1,16 @@
 #include <compat/posix/netdb.h>
 
-#if LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS)
+#if LWIP_DNS && LWIP_SOCKET
 
-#define gethostbyname(name) lwip_gethostbyname(name)
-#define gethostbyname_r(name, ret, buf, buflen, result, h_errnop) \
-		lwip_gethostbyname_r(name, ret, buf, buflen, result, h_errnop)
+#if !(LWIP_COMPAT_SOCKETS)
+struct hostent *gethostbyname(const char *name);
+int gethostbyname_r(const char *name,
+		struct hostent *ret, char *buf, size_t buflen,
+		struct hostent **result, int *h_errnop);
+#endif
+
+struct hostent *gethostbyaddr(const void *addr __unused,
+		socklen_t len __unused, int type __unused);
 
 int getaddrinfo(const char *node, const char *service,
 		const struct addrinfo *hints,
@@ -12,6 +18,9 @@ int getaddrinfo(const char *node, const char *service,
 void freeaddrinfo(struct addrinfo *res);
 
 #endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
+
+const char *gai_strerror(int errcode);
+
 
 struct servent {
 	char    *s_name;        /* official service name */
@@ -26,7 +35,11 @@ struct protoent {
 	int     p_proto;        /* protocol # */
 };
 
-const char *gai_strerror(int errcode);
+struct protoent *getprotoent(void);
+struct protoent *getprotobyname(const char *name);
+struct protoent *getprotobynumber(int num);
+void endprotoent(void);
+void setprotoent(int stayopen);
 
 /*
  * Constants for getnameinfo()
