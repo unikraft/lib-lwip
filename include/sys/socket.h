@@ -52,6 +52,10 @@
 #define SOCK_SEQPACKET 5
 #endif
 
+#ifndef SOMAXCONN
+#define SOMAXCONN 128
+#endif
+
 int socket(int domain, int type, int protocol);
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 int bind(int s, const struct sockaddr *name, socklen_t namelen);
