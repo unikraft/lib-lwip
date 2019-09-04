@@ -63,7 +63,7 @@ CXXINCLUDES-$(CONFIG_LIBLWIP) += -I$(LIBLWIP_BASE)/include -I$(LIBLWIP_EXTRACTED
 ################################################################################
 # Library flags
 ################################################################################
-LIBLWIP_CFLAGS-y += -Wno-type-limits -Wunused-parameter
+LIBLWIP_CFLAGS-y += -Wno-type-limits -Wno-unused-parameter
 LIBLWIP_CFLAGS-$(CONFIG_LWIP_DEBUG) += -DUK_DEBUG
 LIBLWIP_CFLAGS-y   += -D__IN_LIBLWIP__
 LIBLWIP_CXXFLAGS-y += -D__IN_LIBLWIP__
