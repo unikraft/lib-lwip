@@ -831,3 +831,9 @@ int sendto(int s, const void *dataptr, size_t size, int flags,
 EXIT:
 	return ret;
 }
+
+int socketpair(int domain, int type, int protocol, int sv[2])
+{
+	errno = ENOTSUP;
+	return -1;
+}

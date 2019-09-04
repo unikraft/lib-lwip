@@ -48,6 +48,7 @@ setprotoent
 setsockopt
 shutdown
 socket
+socketpair
 sys_check_timeouts
 tcp_abort
 tcp_accept
