@@ -70,6 +70,7 @@ int listen(int s, int backlog);
 int recv(int s, void *mem, size_t len, int flags);
 int recvfrom(int s, void *mem, size_t len, int flags,
 	     struct sockaddr *from, socklen_t *fromlen);
+int recvmsg(int s, struct msghdr *msg, int flags);
 int send(int s, const void *dataptr, size_t size, int flags);
 int sendmsg(int s, const struct msghdr *message, int flags);
 int sendto(int s, const void *dataptr, size_t size, int flags,

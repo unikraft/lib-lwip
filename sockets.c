@@ -755,6 +755,25 @@ EXIT:
 	return ret;
 }
 
+int recvmsg(int s, struct msghdr *msg, int flags)
+{
+	int ret = 0;
+	struct sock_net_file *file = NULL;
+
+	file = sock_net_file_get(s);
+	if (PTRISERR(file)) {
+		LWIP_DEBUGF(SOCKETS_DEBUG,
+			    ("failed to identify socket descriptor\n"));
+		ret = -1;
+		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		goto EXIT;
+	}
+	ret = lwip_recvmsg(file->sock_fd, msg, flags);
+	vfscore_put_file(file->vfscore_file); /* release refcount */
+EXIT:
+	return ret;
+}
+
 int send(int s, const void *dataptr, size_t size, int flags)
 {
 	int ret = 0;

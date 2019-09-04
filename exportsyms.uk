@@ -39,6 +39,7 @@ pbuf_ref
 poll
 recv
 recvfrom
+recvmsg
 select
 send
 sendmsg
