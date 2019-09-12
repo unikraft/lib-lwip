@@ -95,6 +95,10 @@ void sys_free(void *ptr);
 #define LWIP_NETIF_EXT_STATUS_CALLBACK 0
 #endif /* CONFIG_LWIP_NETIF_EXT_STATUS_CALLBACK */
 
+#if CONFIG_LWIP_HAVE_LOOPIF
+#define LWIP_HAVE_LOOPIF 1
+#endif
+
 /**
  * ARP options
  */

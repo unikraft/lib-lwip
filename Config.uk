@@ -80,6 +80,12 @@ config LWIP_NETIF_STATUS_PRINT
 	help
 		Print netif status changes to standard console
 
+config LWIP_HAVE_LOOPIF
+	bool "Loopback interface"
+	default n
+	help
+		Enable loopback interface.
+
 config LWIP_IPV4
 	bool "IPv4 support"
 	default y
