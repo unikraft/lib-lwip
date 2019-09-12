@@ -85,6 +85,7 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/threads.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/init.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/time.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_BASE)/sockets.c|unikraft
+LIBLWIP_SOCKETS_FLAGS-y += -Wno-cast-function-type
 LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_BASE)/getnameinfo.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/core/init.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/core/def.c

@@ -62,6 +62,7 @@ static int sock_net_ioctl(struct vnode *s_vnode,
 			unsigned long request,
 			void *buf);
 
+#define sock_net_getattr   ((vnop_getattr_t) vfscore_vop_einval)
 #define sock_net_inactive  ((vnop_inactive_t) vfscore_vop_nullop)
 
 static struct vnops sock_net_vnops = {
@@ -69,6 +70,7 @@ static struct vnops sock_net_vnops = {
 	.vop_write = sock_net_write,
 	.vop_read  = sock_net_read,
 	.vop_ioctl = sock_net_ioctl,
+	.vop_getattr = sock_net_getattr,
 	.vop_inactive = sock_net_inactive
 };
 
