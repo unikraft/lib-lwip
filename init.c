@@ -44,6 +44,7 @@
 #include <uk/semaphore.h>
 #endif /* CONFIG_LWIP_NOTHREADS */
 #include "netif/uknetdev.h"
+#include <uk/init.h>
 
 #if LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT
 #include <stdio.h>
@@ -128,7 +129,7 @@ static void _lwip_init_done(void *arg __unused)
 /*
  * This function initializing the lwip network stack
  */
-int liblwip_init(void)
+static int liblwip_init(void)
 {
 #if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
 	unsigned int devid;
@@ -147,6 +148,7 @@ int liblwip_init(void)
 #endif /* LWIP_IPV4 */
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 
+	uk_pr_info("Initializing lwip\n");
 #if !CONFIG_LWIP_NOTHREADS
 	uk_semaphore_init(&_lwip_init_sem, 0);
 #endif /* !CONFIG_LWIP_NOTHREADS */
@@ -238,3 +240,4 @@ int liblwip_init(void)
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 	return 0;
 }
+uk_lib_initcall(liblwip_init);
