@@ -27,7 +27,7 @@
 
 /* do we really need all these?? */
 
-static int idx;
+static size_t idx;
 static const unsigned char protos[] = {
 	"\000ip\0"
 	"\001icmp\0"
