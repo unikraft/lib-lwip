@@ -17,6 +17,7 @@ int getaddrinfo(const char *node, const char *service,
 		struct addrinfo **res);
 void freeaddrinfo(struct addrinfo *res);
 
+
 #endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
 
 const char *gai_strerror(int errcode);
@@ -57,6 +58,10 @@ void setprotoent(int stayopen);
 #define NI_DGRAM        0x10
 #define NI_NUMERICSCOPE 0x20
 
+/* Error value for getservbyport_r not defined by lwip/netdb.h */
+/* Imported from musl */
+#define EAI_SYSTEM     11
+
 /* Error values for getaddrinfo() not defined by lwip/netdb.h */
 #define EAI_OVERFLOW    205      /* Argument buffer overflow.  */
 
@@ -66,3 +71,6 @@ int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
 
 struct servent *getservbyname(const char *name, const char *proto);
 struct servent *getservbyport(int port, const char *proto);
+int getservbyport_r(int port, const char *prots, struct servent *se,
+		    char *buf, size_t buflen, struct servent **res);
+
