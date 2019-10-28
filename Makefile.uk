@@ -57,8 +57,11 @@ LIBLWIP_EXTRACTED=$(LIBLWIP_ORIGIN)/$(LIBLWIP_ZIPNAME)/src
 ################################################################################
 # Library includes
 ################################################################################
-CINCLUDES-$(CONFIG_LIBLWIP)   += -I$(LIBLWIP_BASE)/include -I$(LIBLWIP_EXTRACTED)/include
-CXXINCLUDES-$(CONFIG_LIBLWIP) += -I$(LIBLWIP_BASE)/include -I$(LIBLWIP_EXTRACTED)/include
+LIBLWIP_COMMON_INCLUDES-y += -I$(LIBLWIP_BASE)/include
+LIBLWIP_COMMON_INCLUDES-y += -I$(LIBLWIP_BASE)/musl-imported/include
+LIBLWIP_COMMON_INCLUDES-y += -I$(LIBLWIP_EXTRACTED)/include
+CINCLUDES-$(CONFIG_LIBLWIP)   += $(LIBLWIP_COMMON_INCLUDES-y)
+CXXINCLUDES-$(CONFIG_LIBLWIP) += $(LIBLWIP_COMMON_INCLUDES-y)
 
 ################################################################################
 # Library flags
