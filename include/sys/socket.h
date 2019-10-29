@@ -56,6 +56,14 @@
 #define SOMAXCONN 128
 #endif
 
+#ifndef AF_UNIX
+#define AF_UNIX 1 /* Not supported/stub */
+#endif
+
+#ifndef SCM_RIGHTS
+#define SCM_RIGHTS 1 /* Not supported/stub */
+#endif
+
 int socket(int domain, int type, int protocol);
 int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 int bind(int s, const struct sockaddr *name, socklen_t namelen);
