@@ -56,8 +56,12 @@
 #define SOMAXCONN 128
 #endif
 
+#ifndef AF_LOCAL
+#define AF_LOCAL 1 /* Not supported/stub */
+#endif
+
 #ifndef AF_UNIX
-#define AF_UNIX 1 /* Not supported/stub */
+#define AF_UNIX AF_LOCAL /* Not supported/stub */
 #endif
 
 #ifndef SCM_RIGHTS
