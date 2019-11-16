@@ -162,6 +162,16 @@ config LWIP_SOCKET
 	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	default y
 
+if LWIP_SOCKET
+	config LWIP_SOCKET_SELECT_GENERIC_FDS
+		bool "Use select() with any file descriptor type"
+		default y
+		help
+			lwip's select() implementation supports only sockets. This
+			configuration option makes it possible to use other file descriptor
+			types as well, even though they are not supported by lwip.
+endif
+
 menuconfig LWIP_DEBUG
 	bool "Debug messages"
 	default n

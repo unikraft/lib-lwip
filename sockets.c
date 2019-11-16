@@ -497,12 +497,20 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		if (readfds && FD_ISSET(i, readfds)) {
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
+#if CONFIG_LWIP_SOCKET_SELECT_GENERIC_FDS
+				/* We allow other fd types, but we don't support them */
+				if (PTR2ERR(file) == -EBADF) {
+					FD_CLR(i, readfds);
+					continue;
+				}
+#else
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
+#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
@@ -512,12 +520,20 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		if (writefds && FD_ISSET(i, writefds)) {
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
+#if CONFIG_LWIP_SOCKET_SELECT_GENERIC_FDS
+				/* We allow other fd types, but we don't support them */
+				if (PTR2ERR(file) == -EBADF) {
+					FD_CLR(i, writefds);
+					continue;
+				}
+#else
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
+#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
@@ -527,12 +543,20 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		if (exceptfds && FD_ISSET(i, exceptfds)) {
 			file = sock_net_file_get(i);
 			if (PTRISERR(file)) {
+#if CONFIG_LWIP_SOCKET_SELECT_GENERIC_FDS
+				/* We allow other fd types, but we don't support them */
+				if (PTR2ERR(file) == -EBADF) {
+					FD_CLR(i, exceptfds);
+					continue;
+				}
+#else
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
+#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
