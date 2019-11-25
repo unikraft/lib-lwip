@@ -34,7 +34,11 @@
  */
 
 /* network stub calls */
+#include <uk/config.h>
 #include <sys/time.h>
+#if CONFIG_LWIP_SOCKET_PPOLL
+#include <signal.h>
+#endif
 #include <vfscore/dentry.h>
 #include <vfscore/file.h>
 #include <vfscore/fs.h>
@@ -472,6 +476,38 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 EXIT:
 	return ret;
 }
+
+#if CONFIG_LWIP_SOCKET_PPOLL
+#if CONFIG_LIBPTHREAD_EMBEDDED
+#define __sigmask   pthread_sigmask
+#else
+#define __sigmask   sigprocmask
+#endif
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
+		const sigset_t *sigmask)
+{
+	sigset_t origmask;
+	int timeout, rc, _rc;
+
+	if (!fds) {
+		errno = EFAULT;
+		rc = -1;
+		goto out;
+	}
+
+	timeout = (tmo_p == NULL) ? -1 :
+		(tmo_p->tv_sec * 1000 + tmo_p->tv_nsec / 1000000);
+	rc = __sigmask(SIG_SETMASK, sigmask, &origmask);
+	if (rc)
+		goto out;
+	rc = poll(fds, nfds, timeout);
+	_rc = __sigmask(SIG_SETMASK, &origmask, NULL);
+	if (rc == 0 && _rc != 0)
+		rc = _rc;
+out:
+	return rc;
+}
+#endif /* CONFIG_LWIP_SOCKET_PPOLL */
 
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		struct timeval *timeout)

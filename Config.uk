@@ -170,6 +170,12 @@ if LWIP_SOCKET
 			lwip's select() implementation supports only sockets. This
 			configuration option makes it possible to use other file descriptor
 			types as well, even though they are not supported by lwip.
+
+	config LWIP_SOCKET_PPOLL
+		bool "Enable ppoll()"
+		default y
+		help
+			Enable ppoll() implementation.
 endif
 
 menuconfig LWIP_DEBUG
