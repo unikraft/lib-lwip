@@ -56,8 +56,16 @@
 #define SOMAXCONN 128
 #endif
 
+#ifndef PF_LOCAL
+#define PF_LOCAL 1
+#endif
+
+#ifndef PF_UNIX
+#define PF_UNIX PF_LOCAL
+#endif
+
 #ifndef AF_LOCAL
-#define AF_LOCAL 1 /* Not supported/stub */
+#define AF_LOCAL PF_LOCAL /* Not supported/stub */
 #endif
 
 #ifndef AF_UNIX
