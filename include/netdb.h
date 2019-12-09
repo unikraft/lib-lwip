@@ -2,6 +2,10 @@
 #define _LWIP_GLUE_NETDB_H_
 #include <compat/posix/netdb.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if LWIP_DNS && LWIP_SOCKET
 
 #if !(LWIP_COMPAT_SOCKETS)
@@ -78,5 +82,10 @@ struct servent *getservbyname(const char *name, const char *proto);
 struct servent *getservbyport(int port, const char *proto);
 int getservbyport_r(int port, const char *prots, struct servent *se,
 		    char *buf, size_t buflen, struct servent **res);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
 

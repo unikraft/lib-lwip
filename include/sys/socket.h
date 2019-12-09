@@ -33,6 +33,10 @@
 
 #ifndef _UK_LWIP_SOCKET_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <uk/config.h>
 #if CONFIG_HAVE_LIBC
 #include <fcntl.h>
@@ -96,5 +100,9 @@ int sendmsg(int s, const struct msghdr *message, int flags);
 int sendto(int s, const void *dataptr, size_t size, int flags,
 	   const struct sockaddr *to, socklen_t tolen);
 int socketpair(int domain, int type, int protocol, int sv[2]);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _UK_LWIP_SOCKET_H_ */
