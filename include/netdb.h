@@ -1,3 +1,5 @@
+#ifndef _LWIP_GLUE_NETDB_H_
+#define _LWIP_GLUE_NETDB_H_
 #include <compat/posix/netdb.h>
 
 #if LWIP_DNS && LWIP_SOCKET
@@ -58,12 +60,15 @@ void setprotoent(int stayopen);
 #define NI_DGRAM        0x10
 #define NI_NUMERICSCOPE 0x20
 
-/* Error value for getservbyport_r not defined by lwip/netdb.h */
-/* Imported from musl */
-#define EAI_SYSTEM     11
-
-/* Error values for getaddrinfo() not defined by lwip/netdb.h */
-#define EAI_OVERFLOW    205      /* Argument buffer overflow.  */
+/* Error values for getaddrinfo() and getservbyport_r not defined */
+/* by lwip/netdb.h */
+#define EAI_BADFLAGS   -1
+#define EAI_AGAIN      -3
+#define EAI_NODATA     -5
+#define EAI_SOCKTYPE   -7
+#define EAI_ADDRFAMILY -9
+#define EAI_SYSTEM     -11
+#define EAI_OVERFLOW   -12
 
 int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
 		char *host, socklen_t hostlen,
@@ -73,4 +78,5 @@ struct servent *getservbyname(const char *name, const char *proto);
 struct servent *getservbyport(int port, const char *proto);
 int getservbyport_r(int port, const char *prots, struct servent *se,
 		    char *buf, size_t buflen, struct servent **res);
+#endif
 
