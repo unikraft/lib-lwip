@@ -165,6 +165,7 @@ config LWIP_SOCKET
 if LWIP_SOCKET
 	config LWIP_SOCKET_SELECT_GENERIC_FDS
 		bool "Use select() with any file descriptor type"
+		depends on HAVE_LIBC
 		default y
 		help
 			lwip's select() implementation supports only sockets. This
@@ -173,6 +174,7 @@ if LWIP_SOCKET
 
 	config LWIP_SOCKET_PPOLL
 		bool "Enable ppoll()"
+		depends on HAVE_LIBC
 		default y
 		help
 			Enable ppoll() implementation.
