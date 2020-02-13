@@ -193,6 +193,7 @@ static void uknetdev_input(struct uk_netdev *dev,
 	struct netif *nf = (struct netif *) argp;
 	struct uk_netbuf *nb;
 	struct pbuf *p;
+	err_t err;
 	int ret;
 
 	UK_ASSERT(dev);
@@ -243,12 +244,32 @@ static void uknetdev_input(struct uk_netdev *dev,
 		p = lwip_netbuf_to_pbuf(nb);
 		p->payload = nb->data;
 		p->tot_len = p->len = nb->len;
-		if (unlikely(nf->input(p, nf) != ERR_OK)) {
+		err = nf->input(p, nf);
+		if (unlikely(err != ERR_OK)) {
+#if CONFIG_LWIP_THREADS && CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
+			/* At this point it is possible that lwIP's input queue
+			 * is full or we run out of memory. In this case, we
+			 * return to the scheduler and hope that lwIP's main
+			 * thread is able to process some packets.
+			 * Afterwards, we try it once again.
+			 */
+			if (err == ERR_MEM) {
+				LWIP_DEBUGF(NETIF_DEBUG,
+					    ("%s: %c%c%u: lwIP's input queue full: yielding and trying once again...\n",
+					     __func__, nf->name[0], nf->name[1],
+					     nf->num));
+				uk_sched_yield();
+				err = nf->input(p, nf);
+				if (likely(err == ERR_OK))
+					continue;
+			}
+#endif
+
 			/*
 			 * Drop the packet that we could not send to the stack
 			 */
-			uk_pr_err("%c%c%u: Failed to forward packet to lwIP\n",
-				  nf->name[0], nf->name[1], nf->num);
+			uk_pr_err("%c%c%u: Failed to forward packet to lwIP: %d\n",
+				  nf->name[0], nf->name[1], nf->num, err);
 			uk_netbuf_free_single(nb);
 		}
 	} while (uk_netdev_status_more(ret));
