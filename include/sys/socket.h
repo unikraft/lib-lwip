@@ -38,6 +38,7 @@ extern "C" {
 #endif
 
 #include <uk/config.h>
+#if CONFIG_LWIP_SOCKETS
 #if CONFIG_HAVE_LIBC
 #include <fcntl.h>
 #include <poll.h>
@@ -105,4 +106,5 @@ int socketpair(int domain, int type, int protocol, int sv[2]);
 }
 #endif
 
+#endif /* CONFIG_LWIP_SOCKETS */
 #endif /* _UK_LWIP_SOCKET_H_ */

@@ -23,6 +23,9 @@ int getaddrinfo(const char *node, const char *service,
 		struct addrinfo **res);
 void freeaddrinfo(struct addrinfo *res);
 
+int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
+		char *host, socklen_t hostlen,
+		char *serv, socklen_t servlen, int flags);
 
 #endif /* LWIP_DNS && LWIP_SOCKET && !(LWIP_COMPAT_SOCKETS) */
 
@@ -73,10 +76,6 @@ void setprotoent(int stayopen);
 #define EAI_ADDRFAMILY -9
 #define EAI_SYSTEM     -11
 #define EAI_OVERFLOW   -12
-
-int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
-		char *host, socklen_t hostlen,
-		char *serv, socklen_t servlen, int flags);
 
 struct servent *getservbyname(const char *name, const char *proto);
 struct servent *getservbyport(int port, const char *proto);
