@@ -38,11 +38,11 @@ extern "C" {
 #endif
 
 #include <uk/config.h>
-#if CONFIG_LWIP_SOCKETS
+#if CONFIG_LWIP_SOCKET
 #if CONFIG_HAVE_LIBC
 #include <fcntl.h>
 #include <poll.h>
-#endif
+#endif /* CONFIG_HAVE_LIBC */
 #include <lwip/sockets.h>
 
 #ifndef SOCK_CLOEXEC
@@ -102,9 +102,10 @@ int sendto(int s, const void *dataptr, size_t size, int flags,
 	   const struct sockaddr *to, socklen_t tolen);
 int socketpair(int domain, int type, int protocol, int sv[2]);
 
+#endif /* CONFIG_LWIP_SOCKET */
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* CONFIG_LWIP_SOCKETS */
 #endif /* _UK_LWIP_SOCKET_H_ */
