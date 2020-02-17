@@ -1,4 +1,11 @@
+#ifndef __NET_IF_H__
+#define __NET_IF_H__
+
 #include <compat/posix/net/if.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 char *if_indextoname (unsigned int, char *);
 
@@ -26,7 +33,6 @@ char *if_indextoname (unsigned int, char *);
 #define IFF_VOLATILE (IFF_LOOPBACK|IFF_POINTOPOINT|IFF_BROADCAST| \
         IFF_ECHO|IFF_MASTER|IFF_SLAVE|IFF_RUNNING|IFF_LOWER_UP|IFF_DORMANT)
 
-#if defined(_BSD_SOURCE)
 struct ifconf {
 	int ifc_len;
 	union {
@@ -34,8 +40,13 @@ struct ifconf {
 		struct ifreq *ifcu_req;
 	} ifc_ifcu;
 };
-#endif /* _BSD_SOURCE */
 #define ifc_buf         ifc_ifcu.ifcu_buf
 #define ifc_req         ifc_ifcu.ifcu_req
 
 #endif /* defined(_GNU_SOURCE) || defined(_BSD_SOURCE) */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __NET_IF_H__ */
