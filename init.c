@@ -38,11 +38,13 @@
 #include "lwip/tcpip.h"
 #include "lwip/init.h"
 #include "lwip/dhcp.h"
+#include "lwip/inet.h"
 #if CONFIG_LWIP_NOTHREADS
 #include "lwip/timeouts.h"
 #else /* CONFIG_LWIP_NOTHREADS */
 #include <uk/semaphore.h>
 #endif /* CONFIG_LWIP_NOTHREADS */
+#include <uk/netdev_core.h>
 #include "netif/uknetdev.h"
 #include <uk/init.h>
 
@@ -139,11 +141,11 @@ static int liblwip_init(void)
 	uint16_t  __maybe_unused int16cfg;
 	int is_first_nf;
 #if LWIP_IPV4
-	ip4_addr_t __maybe_unused ip4;
+	ip4_addr_t ip4;
 	ip4_addr_t *ip4_arg;
-	ip4_addr_t __maybe_unused mask4;
+	ip4_addr_t mask4;
 	ip4_addr_t *mask4_arg;
-	ip4_addr_t __maybe_unused gw4;
+	ip4_addr_t gw4;
 	ip4_addr_t *gw4_arg;
 #endif /* LWIP_IPV4 */
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
@@ -188,23 +190,42 @@ static int liblwip_init(void)
 		mask4_arg = NULL;
 		gw4_arg   = NULL;
 
-		/*
-		 * TODO: Try to get device configuration from
-		 * netdev's econf interface:
-		 *
-		 * UK_NETDEV_IPV4_ADDR_NINT16;
-		 * UK_NETDEV_IPV4_ADDR_STR;
-		 * UK_NETDEV_IPV4_MASK_NINT16;
-		 * UK_NETDEV_IPV4_MASK_STR;
-		 * UK_NETDEV_IPV4_GW_NINT16;
-		 * UK_NETDEV_IPV4_GW_STR;
-		 *
-		 * When successfully done, set
-		 *  ip_arg = &ip;
-		 *  mask_arg = &mask;
-		 *  gw_arg = &gw;
-		 */
+		/* IP */
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_ADDR_STR);
+		if (strcfg) {
+			if (ip4addr_aton(strcfg, &ip4) != 1) {
+				uk_pr_err("Error converting IP address: %s\n",
+						strcfg);
+				goto no_conf;
+			}
+		} else
+			goto no_conf;
+		ip4_arg = &ip4;
 
+		/* mask */
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_MASK_STR);
+		if (strcfg) {
+			if (ip4addr_aton(strcfg, &mask4) != 1) {
+				uk_pr_err("Error converting net mask: %s\n",
+						strcfg);
+				goto no_conf;
+			}
+		} else
+			/* default mask */
+			ip4_addr_set_u32(&mask4, lwip_htonl(IP_CLASSC_NET));
+		mask4_arg = &mask4;
+
+		/* gateway */
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_GW_STR);
+		if (strcfg) {
+			if (ip4addr_aton(strcfg, &gw4) != 1) {
+				uk_pr_err("Error converting gateway: %s\n",
+						strcfg);
+				goto no_conf;
+			}
+			gw4_arg = &gw4;
+		}
+no_conf:
 		nf = uknetdev_addif(dev, ip4_arg, mask4_arg, gw4_arg);
 #else /* LWIP_IPV4 */
 		/*
