@@ -50,6 +50,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <lwip/sockets.h>
+#include <lwip/if_api.h>
 
 #define SOCK_NET_SET_ERRNO(errcode) \
 	(errno = -(errcode))
@@ -899,3 +900,23 @@ int socketpair(int domain, int type, int protocol, int sv[2])
 	errno = ENOTSUP;
 	return -1;
 }
+
+#ifdef LWIP_SOCKET
+unsigned int if_nametoindex(const char *ifname)
+{
+	int ret;
+
+	ret = lwip_if_nametoindex(ifname);
+
+	return ret;
+}
+
+char *if_indextoname(unsigned int ifindex, char *ifname)
+{
+	char *ret;
+
+	ret = lwip_if_indextoname(ifindex, ifname);
+
+	return ret;
+}
+#endif

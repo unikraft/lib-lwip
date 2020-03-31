@@ -86,7 +86,6 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mutex.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/semaphore.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mailbox.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/threads.c|unikraft
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/ifname.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/init.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/time.c|unikraft
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/sendfile.c|unikraft
@@ -120,6 +119,7 @@ LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/netbuf.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/netdb.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/netifapi.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/tcpip.c
+LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/api/if_api.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_EXTRACTED)/api/sockets.c
 
 ################################################################################
