@@ -33,6 +33,9 @@
  *	@(#)tcp.h	8.1 (Berkeley) 6/10/93
  */
 
+#ifndef _TCP_H_
+#define _TCP_H_
+
 typedef	u_long	tcp_seq;
 /*
  * TCP header.
@@ -89,3 +92,5 @@ struct tcphdr {
 #define	TCP_NODELAY	0x01	/* don't delay send to coalesce packets */
 #define	TCP_MAXSEG	0x02	/* set maximum segment size */
 #define	TCP_CORK	0x03	/* don't send out partial frames. Not supported/stub */
+
+#endif
