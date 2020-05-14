@@ -41,6 +41,8 @@ struct group_source_req {
 
 
 #ifdef CONFIG_LWIP_IPV6
+extern const struct in6_addr in6addr_any, in6addr_loopback;
+
 #define IPV6_ADDRFORM           1
 #define IPV6_2292PKTINFO        2
 #define IPV6_2292HOPOPTS        3
