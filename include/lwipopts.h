@@ -16,27 +16,29 @@
 /**
  * Memory mode
  */
-/* provide malloc/free by Unikraft */
 #if CONFIG_LWIP_HEAP
   /* Only use malloc/free for lwIP.
    * Every allocation is done by the heap.
    * Note: This setting results in the smallest binary
    *       size but leads to heavy malloc/free usage during
-   *       network processing.
+   *       network processing and subsequent performance decrease.
    */
   #define MEM_LIBC_MALLOC 1 /* enable heap */
   #define MEMP_MEM_MALLOC 1 /* pool allocations via malloc */
 #elif CONFIG_LWIP_POOLS
-  /* Pools are used for pool allocations and the heap
-   * is used for all the rest of allocations.
-   * Note: Per design, lwIP allocates outgoing packet buffers
-   *       from heap (via PBUF_RAM) and incoming from pools (via PBUF_POOL)
-   *       CONFIG_LWIP_PBUF_POOL_SIZE defines the pool size for PBUF_POOL
-   *       allocations
+  /* Pools are used for all allocations.
    * Note: lwIP allocate pools on the data segment
    */
-  #define MEM_LIBC_MALLOC 1 /* enable heap */
-  #define MEMP_MEM_MALLOC 0 /* pool allocations still via pool */
+  #define MEM_LIBC_MALLOC 0 /* disable heap */
+  #define MEMP_MEM_MALLOC 0 /* pool allocations via pool (default) */
+
+  /* When mem_malloc is called, an element of the smallest pool that can provide
+   * the length needed is returned.
+   */
+  #define MEM_USE_POOLS   1
+  #define MEMP_USE_CUSTOM_POOLS 1
+  #define MEM_USE_POOLS_TRY_BIGGER_POOL 1 /* take a bigger pool if necessary */
+  #define MEMP_SEPARATE_POOLS 1
 #else
  #error Configuration error!
 #endif /* CONFIG_LWIP_HEAP_ONLY / CONFIG_LWIP_POOLS_ONLY */
@@ -54,15 +56,6 @@ void sys_free(void *ptr);
 #define mem_clib_calloc   sys_calloc
 #define mem_clib_free     sys_free
 #endif /* MEM_LIBC_MALLOC */
-
-#if MEM_USE_POOLS
-/*
- * Use lwIP's pools
- */
-#define MEMP_USE_CUSTOM_POOLS 0
-/* for each pool use a separate array in data segment */
-#define MEMP_SEPARATE_POOLS 1
-#endif /* MEM_USE_POOLS */
 
 /**
  * Operation mode (threaded, mainloop)
@@ -171,14 +164,15 @@ void sys_free(void *ptr);
 #define TCP_SND_BUF (TCP_WND + (2 * TCP_MSS))
 #endif /* CONFIG_LWIP_WND_SCALE */
 
+#define MEMP_NUM_TCP_PCB CONFIG_LWIP_NUM_TCPCON /* max num of sim. TCP connections */
+#define MEMP_NUM_TCP_PCB_LISTEN CONFIG_LWIP_NUM_TCPLISTENERS /* max num of sim. TCP listeners */
+
 #define TCP_SNDLOWAT (4 * TCP_MSS)
 #define TCP_SND_QUEUELEN (2 * (TCP_SND_BUF) / (TCP_MSS))
 #define TCP_QUEUE_OOSEQ 4
-#define MEMP_NUM_TCP_SEG (MEMP_NUM_TCP_PCB * ((TCP_SND_QUEUELEN) / 5))
+#define MEMP_NUM_TCP_SEG ((MEMP_NUM_TCP_PCB) * ((TCP_SND_QUEUELEN) / 5))
 #define MEMP_NUM_FRAG_PBUF 32
 
-#define MEMP_NUM_TCP_PCB CONFIG_LWIP_NUM_TCPCON /* max num of sim. TCP connections */
-#define MEMP_NUM_TCP_PCB_LISTEN 32 /* max num of sim. TCP listeners */
 #endif /* LWIP_TCP */
 
 /**
@@ -249,6 +243,10 @@ void sys_free(void *ptr);
 #ifndef PBUF_POOL_SIZE
 #define PBUF_POOL_SIZE ((TCP_WND + TCP_MSS - 1) / TCP_MSS)
 #endif
+#ifndef PBUF_POOL_BUFSIZE
+/* smallest PBUF_POOL_BUFSIZE which satisfies TCP_WND < PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - protocol headers) */
+#define PBUF_POOL_BUFSIZE ((TCP_WND / PBUF_POOL_SIZE) + (PBUF_LINK_ENCAPSULATION_HLEN + PBUF_LINK_HLEN + PBUF_IP_HLEN + PBUF_TRANSPORT_HLEN) + 1)
+#endif
 #ifndef MEMP_NUM_PBUF
 #define MEMP_NUM_PBUF ((MEMP_NUM_TCP_PCB * (TCP_SND_QUEUELEN)) / 2)
 #endif
@@ -286,6 +284,13 @@ void sys_free(void *ptr);
 #define LWIP_NETCONN 0
 #else
 #define LWIP_NETCONN 1
+/* maximum number of struct netconn entries, which limits the maximum
+ * number of open sockets */
+#if LWIP_TCP
+#define MEMP_NUM_NETCONN CONFIG_LWIP_NUM_TCPCON
+#else
+#define MEMP_NUM_NETCONN 64
+#endif /* LWIP_TCP */
 #endif
 
 /**

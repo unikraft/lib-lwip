@@ -86,8 +86,8 @@ config LWIP_HEAP
 	help
 		Use default ukalloc allocator for all memory allocation requests
 
-#config LWIP_POOLS
-#	bool "Memory pools"
+config LWIP_POOLS
+	bool "Memory pools"
 endchoice
 
 config LWIP_NETIF_EXT_STATUS_CALLBACK
@@ -141,6 +141,14 @@ config LWIP_TCP_KEEPALIVE
 config LWIP_TCP_TIMESTAMPS
 	bool "Timestamps"
 	default n
+
+config LWIP_NUM_TCPCON
+	int "Maximum number of simultaneous TCP connections"
+	default 64
+
+config LWIP_NUM_TCPLISTENERS
+	int "Maximum number of simultaneous TCP listeners"
+	default 64
 endif
 
 config LWIP_ICMP
