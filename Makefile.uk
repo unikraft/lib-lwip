@@ -62,6 +62,7 @@ LIBLWIP_COMMON_INCLUDES-y += -I$(LIBLWIP_BASE)/musl-imported/include
 LIBLWIP_COMMON_INCLUDES-y += -I$(LIBLWIP_EXTRACTED)/include
 CINCLUDES-$(CONFIG_LIBLWIP)   += $(LIBLWIP_COMMON_INCLUDES-y)
 CXXINCLUDES-$(CONFIG_LIBLWIP) += $(LIBLWIP_COMMON_INCLUDES-y)
+$(eval $(call uknetdev_scratch_mem,$(CONFIG_LWIP_UKNETDEV_SCRATCH)))
 
 ################################################################################
 # Library flags

@@ -22,6 +22,15 @@ config LWIP_UKNETDEV
 		In case threaded mode is selected and the underlying device
 		driver does not support receive interrupts the network
 		interfaces have to be polled manually (uknetdev_poll()).
+
+config LWIP_UKNETDEV_SCRATCH
+	int
+	default 32
+	help
+		The network stack reserves space in the uknetdev device for its
+		use. Please do not change this value and in case change this
+		value please make sure it is sufficient enough to hold the
+		lwip_netdev_data data structure.
 endmenu
 
 config LWIP_AUTOIFACE
