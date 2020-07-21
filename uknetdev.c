@@ -64,6 +64,11 @@
 
 struct lwip_netdev_data {
 	uint32_t features;
+#ifdef CONFIG_HAVE_SCHED
+	struct uk_thread *poll_thread; /* Thread per device */
+	char *_name; /* Thread name */
+	struct uk_sched *sched; /* Scheduler information */
+#endif /* CONFIG_HAVE_SCHED */
 };
 
 /*
@@ -325,44 +330,84 @@ void uknetdev_poll_all(void)
 
 #else /* CONFIG_LWIP_NOTHREADS */
 
+static void _poll_netif(void *arg)
+{
+	struct netif *nf = (struct netif *) arg;
+
+	while (1) {
+		uknetdev_poll(nf);
+		uk_sched_yield();
+	}
+}
+
 static void uknetdev_updown(struct netif *nf)
 {
 	struct uk_netdev *dev;
 	int ret;
+	struct lwip_netdev_data  *lwip_data;
 
 	UK_ASSERT(nf);
 	dev = netif_to_uknetdev(nf);
 	UK_ASSERT(dev);
+	lwip_data = (struct lwip_netdev_data *)dev->scratch_pad;
 
 	/* Enable and disable interrupts according to netif's up/down status */
-	if (nf->flags & NETIF_FLAG_UP) {
-		ret = uk_netdev_rxq_intr_enable(dev, 0);
-		if (ret < 0) {
-			LWIP_DEBUGF(NETIF_DEBUG,
-				    ("%s: %c%c%u: Failed to enable rx interrrupt mode on netdev %u\n",
-				     __func__, nf->name[0], nf->name[1],
-				     nf->num, uk_netdev_id_get(dev)));
-		} else {
-			LWIP_DEBUGF(NETIF_DEBUG,
-				    ("%s: %c%c%u: Enabled rx interrupt mode on netdev %u\n",
-				     __func__, nf->name[0], nf->name[1],
-				     nf->num, uk_netdev_id_get(dev)));
-		}
 
-		if (ret == 1) {
-			/*
-			 * uk_netdev_rxq_intr_enable() told us that we need to
-			 * flush the receieve queue before interrupts are
-			 * enabled. For this purpose we do an initial poll.
-			 */
-			uknetdev_poll(nf);
+	if (nf->flags & NETIF_FLAG_UP) {
+		if (uk_netdev_rxintr_supported(lwip_data->features)) {
+			ret = uk_netdev_rxq_intr_enable(dev, 0);
+			if (ret < 0) {
+				LWIP_DEBUGF(NETIF_DEBUG,
+						("%s: %c%c%u: Failed to enable rx interrupt mode on netdev %u\n",
+						 __func__, nf->name[0],
+						 nf->name[1],
+						 nf->num,
+						 uk_netdev_id_get(dev)));
+			} else {
+				LWIP_DEBUGF(NETIF_DEBUG,
+					("%s: %c%c%u: Enabled rx interrupt mode on netdev %u\n",
+						 __func__, nf->name[0],
+						 nf->name[1],
+						 nf->num,
+						 uk_netdev_id_get(dev)));
+			}
+
+			if (ret == 1) {
+				/*
+				 * uk_netdev_rxq_intr_enable() told us that we
+				 * need to flush the receive queue before
+				 * interrupts are enabled. For this purpose
+				 * we do an initial poll.
+				 */
+				uknetdev_poll(nf);
+			}
+		} else {
+#ifdef CONFIG_HAVE_SCHED
+			LWIP_DEBUGF(NETIF_DEBUG,
+					("%s: Poll receive enabled\n",
+					 __func__));
+			/* Create a thread */
+			lwip_data->sched = uk_sched_get_default();
+			UK_ASSERT(lwip_data->sched);
+			lwip_data->poll_thread =
+				uk_sched_thread_create(lwip_data->sched, NULL,
+						       NULL, _poll_netif, nf);
+#else /* CONFIG_HAVE_SCHED */
+			uk_pr_warn("The netdevice does not support interrupt. Ensure the netdevice is polled to receive packets");
+#endif /* CONFIG_HAVE_SCHED */
 		}
 	} else {
-		uk_netdev_rxq_intr_disable(dev, 0);
-		LWIP_DEBUGF(NETIF_DEBUG,
-			    ("%s: %c%c%u: Disabled rx interrupts on netdev %u\n",
-			     __func__, nf->name[0], nf->name[1],
-			     nf->num, uk_netdev_id_get(dev)));
+		/**
+		 * TODO:
+		 * Cleanup the thread on stopping the network interface.
+		 */
+		if (uk_netdev_rxintr_supported(lwip_data->features)) {
+			uk_netdev_rxq_intr_disable(dev, 0);
+			LWIP_DEBUGF(NETIF_DEBUG,
+					("%s: %c%c%u: Disabled rx interrupts on netdev %u\n",
+					 __func__, nf->name[0], nf->name[1],
+					 nf->num, uk_netdev_id_get(dev)));
+		}
 
 	}
 }
