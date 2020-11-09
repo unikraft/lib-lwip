@@ -64,12 +64,29 @@
 
 struct lwip_netdev_data {
 	uint32_t features;
+	/*
+	 * NOTE: For now we use the same allocator for RX and TX packets.
+	 *       However, the uknetdev API enables us to use individual ones
+	 *       per queue. The idea could be to avoid competition on
+	 *       allocations which are potentially expensive. In such a case,
+	 *       this lwip setup can be reconsidered.
+	 */
+	struct uk_alloc *pkt_a;
 #ifdef CONFIG_HAVE_SCHED
 	struct uk_thread *poll_thread; /* Thread per device */
 	char *_name; /* Thread name */
 	struct uk_sched *sched; /* Scheduler information */
 #endif /* CONFIG_HAVE_SCHED */
 };
+
+/*
+ * Compile-time assertion that ensures that the uknetdev scratch pad can fit
+ * `struct lwip_netdev_data`. In case this is not fulfilled, please adopt
+ * LWIP_UKNETDEV_SCRATCH in `Config.uk`. The purpose of using the
+ * scratch pad is performance: `struct lwip_netdev_data` is on the same
+ * allocation as `struct uknetdev`. Cache-locality can be utilized better.
+ */
+UK_CTASSERT((sizeof(struct lwip_netdev_data)) <= CONFIG_UK_NETDEV_SCRATCH_SIZE);
 
 /*
  * Global headroom settings for buffer allocations used on receive
@@ -89,15 +106,17 @@ static uint16_t tx_headroom = ETH_PAD_SIZE;
 static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 				   uint16_t count)
 {
-	struct uk_alloc *a;
+	struct lwip_netdev_data *lwip_data;
 	uint16_t i;
 
 	UK_ASSERT(argp);
 
-	a = (struct uk_alloc *) argp;
+	lwip_data = (struct lwip_netdev_data *) argp;
 
 	for (i = 0; i < count; ++i) {
-		nb[i] = lwip_alloc_netbuf(a, UKNETDEV_BUFLEN, rx_headroom);
+		nb[i] = lwip_alloc_netbuf(lwip_data->pkt_a,
+					  UKNETDEV_BUFLEN,
+					  rx_headroom);
 		if (!nb[i]) {
 			/* we run out of memory */
 			break;
@@ -109,8 +128,8 @@ static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 
 static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 {
-	struct uk_alloc *a;
 	struct uk_netdev *dev;
+	struct lwip_netdev_data *lwip_data;
 	struct pbuf *q;
 	struct uk_netbuf *nb;
 	void *allocation;
@@ -120,18 +139,17 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	UK_ASSERT(nf);
 	dev = netif_to_uknetdev(nf);
 	UK_ASSERT(dev);
+	lwip_data = (struct lwip_netdev_data *) dev->scratch_pad;
+	UK_ASSERT(lwip_data);
 
-	a = uk_alloc_get_default();
-	if (!a)
-		return ERR_MEM;
-
-	allocation = uk_malloc(a, UKNETDEV_BUFLEN);
+	allocation = uk_malloc(lwip_data->pkt_a, UKNETDEV_BUFLEN);
 	if (!allocation)
 		return ERR_MEM;
 	nb = uk_netbuf_prepare_buf(allocation, UKNETDEV_BUFLEN,
 				   tx_headroom, 0, NULL);
 	UK_ASSERT(nb);
 	nb->_a = a; /* register allocator for free operation */
+	nb->_b = allocation;
 
 	if (unlikely(p->tot_len > uk_netbuf_tailroom(nb))) {
 		LWIP_DEBUGF(NETIF_DEBUG,
@@ -479,6 +497,7 @@ err_t uknetdev_init(struct netif *nf)
 	if (!info.max_rx_queues || !info.max_tx_queues)
 		return ERR_IF;
 	lwip_data->features = info.features;
+	lwip_data->pkt_a = a;
 
 	/*
 	 * Update our global (rx|tx)_headroom setting that we use for
@@ -514,7 +533,7 @@ err_t uknetdev_init(struct netif *nf)
 	 */
 	rxq_conf.a = a;
 	rxq_conf.alloc_rxpkts = netif_alloc_rxpkts;
-	rxq_conf.alloc_rxpkts_argp = a;
+	rxq_conf.alloc_rxpkts_argp = lwip_data;
 #ifdef CONFIG_LWIP_NOTHREADS
 	/*
 	 * In mainloop mode, we will not use interrupts.

@@ -25,7 +25,7 @@ config LWIP_UKNETDEV
 
 config LWIP_UKNETDEV_SCRATCH
 	int
-	default 32
+	default 64
 	help
 		The network stack reserves space in the uknetdev device for its
 		use. Please do not change this value and in case change this
