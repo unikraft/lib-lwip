@@ -79,7 +79,6 @@
 #define UKNETDEV_NETIF_NAME1 'n'
 
 struct lwip_netdev_data {
-	uint32_t features;
 	/*
 	 * NOTE: For now we use the same allocator for RX and TX packets.
 	 *       However, the uknetdev API enables us to use individual ones
@@ -88,6 +87,7 @@ struct lwip_netdev_data {
 	 *       this lwip setup can be reconsidered.
 	 */
 	struct uk_alloc *pkt_a;
+	struct uk_netdev_info dev_info;
 #ifdef CONFIG_HAVE_SCHED
 	struct uk_thread *poll_thread; /* Thread per device */
 	char *_name; /* Thread name */
@@ -103,18 +103,6 @@ struct lwip_netdev_data {
  * allocation as `struct uknetdev`. Cache-locality can be utilized better.
  */
 UK_CTASSERT((sizeof(struct lwip_netdev_data)) <= CONFIG_UK_NETDEV_SCRATCH_SIZE);
-
-/*
- * Global headroom settings for buffer allocations used on receive
- * and transmit. We are taking the maximum of all uknetdev devices as
- * simplification.
- * TODO: A per-device setting might be more efficient but requires more data
- *       fields for `netif->state`. For now we point directly to the according
- *       `struct uk_netdev` in order to avoid another allocation for these
- *       per-device fields.
- */
-static uint16_t rx_headroom = 0;
-static uint16_t tx_headroom = 0;
 
 #define netif_to_uknetdev(nf) \
 	((struct uk_netdev *) (nf)->state)
@@ -132,7 +120,7 @@ static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 	for (i = 0; i < count; ++i) {
 		nb[i] = lwip_alloc_netbuf(lwip_data->pkt_a,
 					  UKNETDEV_BUFLEN,
-					  rx_headroom);
+					  lwip_data->dev_info.nb_encap_rx);
 		if (!nb[i]) {
 			/* we run out of memory */
 			break;
@@ -162,7 +150,7 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	if (!allocation)
 		return ERR_MEM;
 	nb = uk_netbuf_prepare_buf(allocation, UKNETDEV_BUFLEN,
-				   tx_headroom, 0, NULL);
+				   lwip_data->dev_info.nb_encap_tx, 0, NULL);
 	UK_ASSERT(nb);
 	nb->_a = a; /* register allocator for free operation */
 	nb->_b = allocation;
@@ -366,7 +354,7 @@ static void uknetdev_updown(struct netif *nf)
 	/* Enable and disable interrupts according to netif's up/down status */
 
 	if (nf->flags & NETIF_FLAG_UP) {
-		if (uk_netdev_rxintr_supported(lwip_data->features)) {
+		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
 			ret = uk_netdev_rxq_intr_enable(dev, 0);
 			if (ret < 0) {
 				LWIP_DEBUGF(NETIF_DEBUG,
@@ -413,7 +401,7 @@ static void uknetdev_updown(struct netif *nf)
 		 * TODO:
 		 * Cleanup the thread on stopping the network interface.
 		 */
-		if (uk_netdev_rxintr_supported(lwip_data->features)) {
+		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
 			uk_netdev_rxq_intr_disable(dev, 0);
 			LWIP_DEBUGF(NETIF_DEBUG,
 					("%s: %c%c%u: Disabled rx interrupts on netdev %u\n",
@@ -447,7 +435,6 @@ err_t uknetdev_init(struct netif *nf)
 	struct uk_netdev_conf dev_conf;
 	struct uk_netdev_rxqueue_conf rxq_conf;
 	struct uk_netdev_txqueue_conf txq_conf;
-	struct uk_netdev_info info;
 	struct lwip_netdev_data *lwip_data;
 	const struct uk_hwaddr *hwaddr;
 	unsigned int i;
@@ -487,24 +474,17 @@ err_t uknetdev_init(struct netif *nf)
 		return ERR_MEM;
 
 	/* Get device information */
-	uk_netdev_info_get(dev, &info);
-	if (!info.max_rx_queues || !info.max_tx_queues)
+	uk_netdev_info_get(dev, &lwip_data->dev_info);
+	if (!lwip_data->dev_info.max_rx_queues
+	    || !lwip_data->dev_info.max_tx_queues)
 		return ERR_IF;
-	lwip_data->features = info.features;
 	lwip_data->pkt_a = a;
 
-	/*
-	 * Update our global (rx|tx)_headroom setting that we use for
-	 * buffer allocations
-	 */
-	rx_headroom = (rx_headroom < info.nb_encap_rx)
-		      ? info.nb_encap_rx : rx_headroom;
-	tx_headroom = (tx_headroom < info.nb_encap_tx)
-		      ? info.nb_encap_tx : tx_headroom;
 	LWIP_DEBUGF(NETIF_DEBUG,
 		    ("%s: %c%c%u: Need headroom rx:%"PRIu16", tx:%"PRIu16"\n",
 		     __func__, nf->name[0], nf->name[1], nf->num,
-		     info.nb_encap_rx, info.nb_encap_tx));
+		     lwip_data->dev_info.nb_encap_rx,
+		     lwip_data->dev_info.nb_encap_tx));
 
 	/*
 	 * Device configuration,
