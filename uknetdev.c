@@ -120,7 +120,7 @@ static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 	for (i = 0; i < count; ++i) {
 		nb[i] = lwip_alloc_netbuf(lwip_data->pkt_a,
 					  UKNETDEV_BUFLEN,
-					  1 /* no alignment */,
+					  lwip_data->dev_info.ioalign,
 					  lwip_data->dev_info.nb_encap_rx);
 		if (!nb[i]) {
 			/* we run out of memory */
@@ -137,7 +137,6 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	struct lwip_netdev_data *lwip_data;
 	struct pbuf *q;
 	struct uk_netbuf *nb;
-	void *allocation;
 	char *wpos;
 	int ret;
 
@@ -147,14 +146,13 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	lwip_data = (struct lwip_netdev_data *) dev->scratch_pad;
 	UK_ASSERT(lwip_data);
 
-	allocation = uk_malloc(lwip_data->pkt_a, UKNETDEV_BUFLEN);
-	if (!allocation)
+	nb = uk_netbuf_alloc_buf(lwip_data->pkt_a,
+				 UKNETDEV_BUFLEN,
+				 lwip_data->dev_info.ioalign,
+				 lwip_data->dev_info.nb_encap_tx,
+				 0, NULL);
+	if (!nb)
 		return ERR_MEM;
-	nb = uk_netbuf_prepare_buf(allocation, UKNETDEV_BUFLEN,
-				   lwip_data->dev_info.nb_encap_tx, 0, NULL);
-	UK_ASSERT(nb);
-	nb->_a = a; /* register allocator for free operation */
-	nb->_b = allocation;
 
 	if (unlikely(p->tot_len > uk_netbuf_tailroom(nb))) {
 		LWIP_DEBUGF(NETIF_DEBUG,
@@ -482,10 +480,11 @@ err_t uknetdev_init(struct netif *nf)
 	lwip_data->pkt_a = a;
 
 	LWIP_DEBUGF(NETIF_DEBUG,
-		    ("%s: %c%c%u: Need headroom rx:%"PRIu16", tx:%"PRIu16"\n",
+		    ("%s: %c%c%u: Headroom rx:%"PRIu16", tx:%"PRIu16"; I/O align: 0x%"PRIx16"\n",
 		     __func__, nf->name[0], nf->name[1], nf->num,
 		     lwip_data->dev_info.nb_encap_rx,
-		     lwip_data->dev_info.nb_encap_tx));
+		     lwip_data->dev_info.nb_encap_tx,
+		     lwip_data->dev_info.ioalign));
 
 	/*
 	 * Device configuration,
