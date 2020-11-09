@@ -50,31 +50,19 @@ static void _netbuf_free(struct pbuf *p)
 }
 
 struct uk_netbuf *lwip_alloc_netbuf(struct uk_alloc *a, size_t alloc_size,
-				    size_t headroom)
+				    size_t alloc_align, uint16_t headroom)
 {
-	void *allocation;
 	struct uk_netbuf *b;
 	struct _netbuf_pbuf *np;
 
-	allocation = uk_malloc(a, alloc_size);
-	if (unlikely(!allocation))
-		goto err_out;
-
-	b = uk_netbuf_prepare_buf(allocation, alloc_size,
-				  headroom, sizeof(struct _netbuf_pbuf), NULL);
+	b = uk_netbuf_alloc_buf(a, alloc_size, alloc_align,
+				headroom, sizeof(struct _netbuf_pbuf), NULL);
 	if (unlikely(!b)) {
 		LWIP_DEBUGF(PBUF_DEBUG,
-			    ("Failed to initialize netbuf with encapsulated pbuf: requested headroom: %"__PRIsz", alloc_size: %"__PRIsz"\n",
-			     headroom, alloc_size));
-		goto err_free_allocation;
+			    ("Failed to allocate netbuf with encapsulated pbuf: requested headroom: %"__PRIu16", size: %"__PRIsz", alignement: %"__PRIsz"\n",
+			     headroom, alloc_size, alloc_align));
+		goto err_out;
 	}
-
-	/*
-	 * Register allocator so that uk_netbuf_free() will
-	 * return our memory back to this allocator when free'ing
-	 * this netbuf
-	 */
-	b->_a = a;
 
 	/* Fill-out meta data */
 	np = (struct _netbuf_pbuf *) uk_netbuf_get_priv(b);
@@ -97,8 +85,6 @@ struct uk_netbuf *lwip_alloc_netbuf(struct uk_alloc *a, size_t alloc_size,
 		     b, b->buflen, uk_netbuf_headroom(b)));
 	return b;
 
-err_free_allocation:
-	uk_free(a, allocation);
 err_out:
 	return NULL;
 }

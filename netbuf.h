@@ -61,7 +61,7 @@ struct _netbuf_pbuf {
  * before handing over the embedded pbuf to the network stack.
  */
 struct uk_netbuf *lwip_alloc_netbuf(struct uk_alloc *a, size_t alloc_size,
-				    size_t headroom);
+				    size_t alloc_align, uint16_t headroom);
 
 /**
  * Returns the reference of the embedded pbuf of a netbuf

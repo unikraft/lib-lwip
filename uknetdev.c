@@ -120,6 +120,7 @@ static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 	for (i = 0; i < count; ++i) {
 		nb[i] = lwip_alloc_netbuf(lwip_data->pkt_a,
 					  UKNETDEV_BUFLEN,
+					  1 /* no alignment */,
 					  lwip_data->dev_info.nb_encap_rx);
 		if (!nb[i]) {
 			/* we run out of memory */
