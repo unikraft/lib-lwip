@@ -56,6 +56,22 @@
 
 #include <uk/essentials.h>
 
+/*
+ * NOTE: We do not support ETH_PAD_SIZE with uknetdev.
+ *       According to https://lwn.net/Articles/89597/, the gain of doing padding
+ *       seems to be negligible on the CPU architectures that we currently
+ *       support and may hurt DMA engine performances that may get involved with
+ *       the driver and/or hypervisor. Additionally, it will cause difficulties
+ *       with the current netfront driver because the protocol does not support
+ *       setting an offset for page-aligned receive buffers. Aligning the frame
+ *       could then only be achieved by moving the packet bytes in memory which
+ *       is obviously ways too costly. Because of this, we disable this feature
+ *       completely.
+ */
+#if ETH_PAD_SIZE
+#error ETH_PAD_SIZE is not '0'. This is not supported.
+#endif
+
 #define UKNETDEV_BPS 1000000000u
 #define UKNETDEV_BUFLEN 2048
 
@@ -97,8 +113,8 @@ UK_CTASSERT((sizeof(struct lwip_netdev_data)) <= CONFIG_UK_NETDEV_SCRATCH_SIZE);
  *       `struct uk_netdev` in order to avoid another allocation for these
  *       per-device fields.
  */
-static uint16_t rx_headroom = ETH_PAD_SIZE;
-static uint16_t tx_headroom = ETH_PAD_SIZE;
+static uint16_t rx_headroom = 0;
+static uint16_t tx_headroom = 0;
 
 #define netif_to_uknetdev(nf) \
 	((struct uk_netdev *) (nf)->state)
@@ -160,9 +176,6 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 		return ERR_MEM;
 	}
 
-#if ETH_PAD_SIZE
-	pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
-#endif /* ETH_PAD_SIZE */
 	/*
 	 * Copy pbuf to netbuf
 	 * NOTE: Unfortunately, lwIP seems not to support zero-copy transmit,
@@ -174,26 +187,16 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 		wpos += q->len;
 	}
 	nb->len = p->tot_len;
-#if ETH_PAD_SIZE
-	pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
-#endif /* ETH_PAD_SIZE */
 
 	/* Transmit packet */
 	do {
 		ret = uk_netdev_tx_one(dev, 0, nb);
 	} while (uk_netdev_status_notready(ret));
 	if (unlikely(ret < 0)) {
-#if ETH_PAD_SIZE
-		LWIP_DEBUGF(NETIF_DEBUG,
-			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
-			     __func__, nf->name[0], nf->name[1], nf->num,
-			     p->tot_len - ETH_PAD_SIZE));
-#else /* ETH_PAD_SIZE */
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
 			     __func__, nf->name[0], nf->name[1], nf->num,
 			     p->tot_len));
-#endif /* ETH_PAD_SIZE */
 		/*
 		 * Decrease refcount again because in
 		 * the error case the netdev did not consume the pbuf
@@ -201,15 +204,9 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 		uk_netbuf_free_single(nb);
 		return ERR_IF;
 	}
-#if ETH_PAD_SIZE
-	LWIP_DEBUGF(NETIF_DEBUG, ("%s: %c%c%u: Sent %"PRIu16" bytes\n",
-				  __func__, nf->name[0], nf->name[1], nf->num,
-				  p->tot_len - ETH_PAD_SIZE));
-#else /* ETH_PAD_SIZE */
 	LWIP_DEBUGF(NETIF_DEBUG, ("%s: %c%c%u: Sent %"PRIu16" bytes\n",
 				  __func__, nf->name[0], nf->name[1], nf->num,
 				  p->tot_len));
-#endif /* ETH_PAD_SIZE */
 
 	return ERR_OK;
 }
@@ -265,9 +262,6 @@ static void uknetdev_input(struct uk_netdev *dev,
 			     nb->len));
 
 		/* Send packet to lwip */
-#if ETH_PAD_SIZE
-		uk_netbuf_header(nb, ETH_PAD_SIZE);
-#endif /* ETH_PAD_SIZE */
 		p = lwip_netbuf_to_pbuf(nb);
 		p->payload = nb->data;
 		p->tot_len = p->len = nb->len;

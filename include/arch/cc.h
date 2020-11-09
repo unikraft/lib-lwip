@@ -51,7 +51,12 @@
 
 /* 32 bit checksum calculation */
 #define LWIP_CHKSUM_ALGORITHM 3
-#define ETH_PAD_SIZE 2
+
+/*
+ * Disable padding on Ethernet frames
+ * (not supported by uknetdev driver)
+ */
+#define ETH_PAD_SIZE 0
 
 /* rand */
 #define LWIP_RAND() uk_swrand_randr()
