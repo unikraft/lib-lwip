@@ -32,6 +32,7 @@
  */
 
 #include <uk/alloc.h>
+#include <stddef.h>
 
 void *sys_malloc(size_t size)
 {
