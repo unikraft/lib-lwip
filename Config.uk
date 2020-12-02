@@ -23,6 +23,20 @@ config LWIP_UKNETDEV
 		driver does not support receive interrupts the network
 		interfaces have to be polled manually (uknetdev_poll()).
 
+if LWIP_UKNETDEV
+config LWIP_UKNETDEV_POLLONLY
+       depends on LWIP_THREADS
+       bool "Force polling mode (workaround)"
+       default n
+       help
+		This option forces polling mode for uknetdev devices
+		irrespective if the device supports interrupt-driven
+		mode.
+		Because this option always causes 100% CPU utilization
+		it should be considered as workaround for cases where
+		interrupt-based handling performs badly.
+endif
+
 config LWIP_UKNETDEV_SCRATCH
 	int
 	default 64

@@ -477,6 +477,10 @@ err_t uknetdev_init(struct netif *nf)
 	if (!lwip_data->dev_info.max_rx_queues
 	    || !lwip_data->dev_info.max_tx_queues)
 		return ERR_IF;
+#if CONFIG_LWIP_UKNETDEV_POLLONLY
+	/* Unset receive interrupt support: We force polling mode */
+	lwip_data->dev_info.features &= ~UK_FEATURE_RXQ_INTR_AVAILABLE;
+#endif /* CONFIG_LWIP_UKNETDEV_POLLONLY */
 	lwip_data->pkt_a = a;
 
 	LWIP_DEBUGF(NETIF_DEBUG,
