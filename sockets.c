@@ -51,6 +51,7 @@
 #include <errno.h>
 #include <lwip/sockets.h>
 #include <lwip/if_api.h>
+#include <uk/syscall.h>
 
 #define SOCK_NET_SET_ERRNO(errcode) \
 	(errno = -(errcode))
@@ -326,7 +327,7 @@ static int sock_net_ioctl(struct vnode *s_vnode,
 	return lwip_ioctl(file->sock_fd, request, buf);
 }
 
-int socket(int domain, int type, int protocol)
+UK_LLSYSCALL_R_DEFINE(int, socket, int, domain, int, type, int, protocol)
 {
 	int ret = 0;
 	int vfs_fd = 0xff;
@@ -363,7 +364,8 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT;
 }
 
-int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+UK_LLSYSCALL_R_DEFINE(int, accept, int, s, struct sockaddr *, addr,
+		    socklen_t *, addrlen)
 {
 	int ret = 0;
 	struct sock_net_file *file;
@@ -409,7 +411,8 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT_FDROP;
 }
 
-int bind(int s, const struct sockaddr *name, socklen_t namelen)
+UK_LLSYSCALL_R_DEFINE(int, bind, int, s, const struct sockaddr *, name,
+		    socklen_t, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -437,7 +440,7 @@ EXIT:
 	return ret;
 }
 
-int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+UK_LLSYSCALL_R_DEFINE(int, poll, struct pollfd *, fds, nfds_t, nfds, int, timeout)
 {
 	int ret;
 	unsigned int i;
@@ -484,8 +487,8 @@ EXIT:
 #else
 #define __sigmask   sigprocmask
 #endif
-int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
-		const sigset_t *sigmask)
+UK_LLSYSCALL_R_DEFINE(int, ppoll, struct pollfd *, fds, nfds_t, nfds,
+		    const struct timespec *, tmo_p, const sigset_t *, sigmask)
 {
 	sigset_t origmask;
 	int timeout, rc, _rc;
@@ -510,8 +513,9 @@ out:
 }
 #endif /* CONFIG_LWIP_SOCKET_PPOLL */
 
-int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
-		struct timeval *timeout)
+UK_LLSYSCALL_R_DEFINE(int, select, int, nfds,
+		    fd_set *, readfds, fd_set *, writefds, fd_set *, exceptfds,
+		    struct timeval *, timeout)
 {
 	uint64_t nsecs;
 	fd_set rd, wr, xc;
@@ -645,7 +649,7 @@ EXIT:
 	return ret;
 }
 
-int shutdown(int s, int how)
+UK_LLSYSCALL_R_DEFINE(int, shutdown, int, s, int, how)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -666,7 +670,8 @@ EXIT:
 	return ret;
 }
 
-int getpeername(int s, struct sockaddr *name, socklen_t *namelen)
+UK_LLSYSCALL_R_DEFINE(int, getpeername, int, s, struct sockaddr *, name,
+		    socklen_t *, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -684,7 +689,8 @@ EXIT:
 	return ret;
 }
 
-int getsockname(int s, struct sockaddr *name, socklen_t *namelen)
+UK_LLSYSCALL_R_DEFINE(int, getsockname, int, s, struct sockaddr *, name,
+		    socklen_t *, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -702,7 +708,9 @@ EXIT:
 	return ret;
 }
 
-int getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
+UK_LLSYSCALL_R_DEFINE(int, getsockopt, int, s, int, level,
+		    int, optname, void *, optval,
+		    socklen_t *, optlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -721,8 +729,8 @@ EXIT:
 	return ret;
 }
 
-int setsockopt(int s, int level, int optname, const void *optval,
-	       socklen_t optlen)
+UK_LLSYSCALL_R_DEFINE(int, setsockopt, int, s, int, level, int, optname,
+		    const void *, optval, socklen_t, optlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -741,7 +749,8 @@ EXIT:
 	return ret;
 }
 
-int connect(int s, const struct sockaddr *name, socklen_t namelen)
+UK_LLSYSCALL_R_DEFINE(int, connect, int, s,
+		    const struct sockaddr *, name, socklen_t, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -760,7 +769,7 @@ EXIT:
 	return ret;
 }
 
-int listen(int s, int backlog)
+UK_LLSYSCALL_R_DEFINE(int, listen, int, s, int, backlog)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -779,6 +788,7 @@ EXIT:
 	return ret;
 }
 
+#ifndef CONFIG_LIBMUSL
 int recv(int s, void *mem, size_t len, int flags)
 {
 	int ret = 0;
@@ -797,9 +807,10 @@ int recv(int s, void *mem, size_t len, int flags)
 EXIT:
 	return ret;
 }
+#endif /* !CONFIG_LIBMUSL */
 
-int recvfrom(int s, void *mem, size_t len, int flags,
-		      struct sockaddr *from, socklen_t *fromlen)
+UK_LLSYSCALL_R_DEFINE(int, recvfrom, int, s, void *, mem, size_t, len,
+		    int, flags, struct sockaddr *, from, socklen_t *, fromlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -818,7 +829,8 @@ EXIT:
 	return ret;
 }
 
-int recvmsg(int s, struct msghdr *msg, int flags)
+UK_LLSYSCALL_R_DEFINE(int, recvmsg, int, s,
+		    struct msghdr *, msg, int, flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -837,7 +849,9 @@ EXIT:
 	return ret;
 }
 
-int send(int s, const void *dataptr, size_t size, int flags)
+#ifndef CONFIG_LIBMUSL
+int send(int s, const void *dataptr,
+	 size_t size, int flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -855,8 +869,10 @@ int send(int s, const void *dataptr, size_t size, int flags)
 EXIT:
 	return ret;
 }
+#endif /* !CONFIG_LIBMUSL */
 
-int sendmsg(int s, const struct msghdr *message, int flags)
+UK_LLSYSCALL_R_DEFINE(int, sendmsg, int, s,
+		    const struct msghdr *, message, int, flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -875,8 +891,8 @@ EXIT:
 	return ret;
 }
 
-int sendto(int s, const void *dataptr, size_t size, int flags,
-		    const struct sockaddr *to, socklen_t tolen)
+UK_LLSYSCALL_R_DEFINE(int, sendto, int, s, const void *, dataptr, size_t, size,
+		    int, flags, const struct sockaddr *, to, socklen_t, tolen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -895,7 +911,8 @@ EXIT:
 	return ret;
 }
 
-int socketpair(int domain, int type, int protocol, int sv[2])
+UK_LLSYSCALL_R_DEFINE(int, socketpair, int, domain, int, type,
+		    int, protocol, int *, sv)
 {
 	errno = ENOTSUP;
 	return -1;

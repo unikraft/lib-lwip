@@ -194,6 +194,16 @@ config LWIP_SOCKET
 	default y
 
 if LWIP_SOCKET
+	config LWIP_INET_LIBC_IMPL
+		bool "Inet conversion function"
+		default n if LIBMUSL
+		default y
+
+	config LWIP_PROTO_LIBC_IMPL
+		bool "Protocol conversion function"
+		default n if LIBMUSL
+		default y
+
 	config LWIP_SOCKET_SELECT_GENERIC_FDS
 		bool "Use select() with any file descriptor type"
 		depends on HAVE_LIBC
