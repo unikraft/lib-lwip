@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <uk/essentials.h>
 
 struct servent *getservbyname(const char *name __unused,
 	const char *proto __unused)
