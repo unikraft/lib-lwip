@@ -71,8 +71,13 @@ typedef u16_t in_port_t;
 #if LWIP_IPV4
 /* members are in network byte order */
 struct sockaddr_in {
-  u8_t            sin_len;
-  sa_family_t     sin_family;
+  union {
+    struct {
+      sa_family_t sin_family;   /* AF_INET           */
+      u8_t        sin_len;      /* length of this structure    */
+    };
+    u8_t          __sin_family[2]; /* Represent the short data type of the family */
+  };
   in_port_t       sin_port;
   struct in_addr  sin_addr;
 #define SIN_ZERO_LEN 8
@@ -82,8 +87,13 @@ struct sockaddr_in {
 
 #if LWIP_IPV6
 struct sockaddr_in6 {
-  u8_t            sin6_len;      /* length of this structure    */
-  sa_family_t     sin6_family;   /* AF_INET6                    */
+  union {
+    struct {
+      sa_family_t sin6_family;  /* AF_INET6                    */
+      u8_t        sin6_len;     /* length of this structure    */
+    };
+    u8_t          __sin6_family[2]; /* Represent the short data type of the family */
+  };
   in_port_t       sin6_port;     /* Transport layer port #      */
   u32_t           sin6_flowinfo; /* IPv6 flow information       */
   struct in6_addr sin6_addr;     /* IPv6 address                */
@@ -92,14 +102,24 @@ struct sockaddr_in6 {
 #endif /* LWIP_IPV6 */
 
 struct sockaddr {
-  u8_t        sa_len;
-  sa_family_t sa_family;
+  union {
+    struct {
+      sa_family_t sa_family;
+      u8_t        sa_len;
+    };
+    char          __sa_family[2]; /* Represent the short data type of the family */
+  };
   char        sa_data[14];
 };
 
 struct sockaddr_storage {
-  u8_t        s2_len;
-  sa_family_t ss_family;
+  union {
+    struct {
+      sa_family_t s2_family;
+      u8_t        s2_len;
+    };
+    u8_t __s2_family[2];      /* Represent the short data type of the family */
+  };
   char        s2_data1[2];
   u32_t       s2_data2[3];
 #if LWIP_IPV6
