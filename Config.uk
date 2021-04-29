@@ -214,6 +214,13 @@ config LWIP_UDP
 	bool "UDP support"
 	default y
 
+config LWIP_RAW
+	bool "RAW support"
+	default n
+	help
+		Enable the RAW address family (AF_RAW).  This option allows an
+		application to be able to hook into the IP layer itself.
+
 menuconfig LWIP_TCP
 	bool "TCP support"
 	default y
