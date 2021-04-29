@@ -121,6 +121,15 @@ void sys_free(void *ptr);
 #endif
 
 /**
+ * RAW support
+ */
+#if CONFIG_LWIP_RAW
+#define LWIP_RAW 1
+#else
+#define LWIP_RAW 0
+#endif
+
+/**
  * UDP options
  */
 #if CONFIG_LWIP_UDP
