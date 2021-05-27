@@ -219,6 +219,11 @@ if LWIP_SOCKET
 		default y
 		help
 			Enable ppoll() implementation.
+
+	config LWIP_LIBC_FUNCTIONS_ENABLE
+		bool "Enable libc level function"
+		default y if !LIBMUSL
+		default n
 endif
 
 menuconfig LWIP_DEBUG

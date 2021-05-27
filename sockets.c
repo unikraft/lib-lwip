@@ -364,6 +364,13 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int socket(int domain, int type, int protocol)
+{
+	return uk_syscall_e_socket((long)domain, (long)type, (long)protocol);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, accept, int, s, struct sockaddr *, addr,
 		    socklen_t *, addrlen)
 {
@@ -411,6 +418,13 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT_FDROP;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+{
+	return uk_syscall_e_accept((long)s, (long)addr, (long) addrlen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, bind, int, s, const struct sockaddr *, name,
 		    socklen_t, namelen)
 {
@@ -440,7 +454,15 @@ EXIT:
 	return ret;
 }
 
-UK_LLSYSCALL_R_DEFINE(int, poll, struct pollfd *, fds, nfds_t, nfds, int, timeout)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int bind(int s, const struct sockaddr *name, socklen_t namelen)
+{
+	return uk_syscall_e_bind((long)s, (long)name, (long)namelen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, poll, struct pollfd *, fds, nfds_t, nfds,
+		      int, timeout)
 {
 	int ret;
 	unsigned int i;
@@ -481,6 +503,13 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int poll(struct pollfd *fds, nfds_t nfds, int timeout)
+{
+	return uk_syscall_e_poll((long)fds, (long)nfds, (long)timeout);
+}
+#endif
+
 #if CONFIG_LWIP_SOCKET_PPOLL
 #if CONFIG_LIBPTHREAD_EMBEDDED
 #define __sigmask   pthread_sigmask
@@ -504,13 +533,22 @@ UK_LLSYSCALL_R_DEFINE(int, ppoll, struct pollfd *, fds, nfds_t, nfds,
 	rc = __sigmask(SIG_SETMASK, sigmask, &origmask);
 	if (rc)
 		goto out;
-	rc = poll(fds, nfds, timeout);
+	rc = uk_syscall_e_poll((long)fds, (long)nfds, (long)timeout);
 	_rc = __sigmask(SIG_SETMASK, &origmask, NULL);
 	if (rc == 0 && _rc != 0)
 		rc = _rc;
 out:
 	return rc;
 }
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
+	 const sigset_t *sigmask)
+{
+	return uk_syscall_e_ppoll((long)fds, (long)nfds, (long)tmo_p,
+				  (long)sigmask);
+}
+#endif
+
 #endif /* CONFIG_LWIP_SOCKET_PPOLL */
 
 UK_LLSYSCALL_R_DEFINE(int, select, int, nfds,
@@ -649,6 +687,15 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+	   struct timeval *timeout)
+{
+	return uk_syscall_e_select((long)nfds, (long)readfds, (long)writefds,
+				   (long)exceptfds, (long)timeout);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, shutdown, int, s, int, how)
 {
 	int ret = 0;
@@ -670,6 +717,13 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int shutdown(int s, int how)
+{
+	return uk_syscall_e_shutdown((long)s, (long)how);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, getpeername, int, s, struct sockaddr *, name,
 		    socklen_t *, namelen)
 {
@@ -689,6 +743,14 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getpeername(int s, struct sockaddr *name,
+		socklen_t *namelen)
+{
+	return uk_syscall_e_getpeername((long)s, (long)name, (long)namelen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, getsockname, int, s, struct sockaddr *, name,
 		    socklen_t *, namelen)
 {
@@ -707,6 +769,14 @@ UK_LLSYSCALL_R_DEFINE(int, getsockname, int, s, struct sockaddr *, name,
 EXIT:
 	return ret;
 }
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getsockname(int s, struct sockaddr *name,
+		socklen_t *namelen)
+{
+	return uk_syscall_e_getsockname((long)s, (long)name, (long)namelen);
+}
+#endif
 
 UK_LLSYSCALL_R_DEFINE(int, getsockopt, int, s, int, level,
 		    int, optname, void *, optval,
@@ -729,6 +799,15 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getsockopt(int s, int level, int optname, void *optval,
+		socklen_t *optlen)
+{
+	return uk_syscall_e_getsockopt((long)s, (long)level, (long)optname,
+				       (long)optval, (long)optlen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, setsockopt, int, s, int, level, int, optname,
 		    const void *, optval, socklen_t, optlen)
 {
@@ -748,6 +827,15 @@ UK_LLSYSCALL_R_DEFINE(int, setsockopt, int, s, int, level, int, optname,
 EXIT:
 	return ret;
 }
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int setsockopt(int s, int level, int optname,
+	       const void *optval, socklen_t optlen)
+{
+	return uk_syscall_e_setsockopt((long)s, (long)level, (long)optname,
+				       (long)optval, (long)optlen);
+}
+#endif
 
 UK_LLSYSCALL_R_DEFINE(int, connect, int, s,
 		    const struct sockaddr *, name, socklen_t, namelen)
@@ -769,6 +857,13 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int connect(int s, const struct sockaddr *name, socklen_t namelen)
+{
+	return uk_syscall_e_connect((long)s, (long)name, (long)namelen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, listen, int, s, int, backlog)
 {
 	int ret = 0;
@@ -787,6 +882,13 @@ UK_LLSYSCALL_R_DEFINE(int, listen, int, s, int, backlog)
 EXIT:
 	return ret;
 }
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int listen(int s, int backlog)
+{
+	return uk_syscall_e_listen((long)s, (long)backlog);
+}
+#endif
 
 #ifndef CONFIG_LIBMUSL
 int recv(int s, void *mem, size_t len, int flags)
@@ -829,6 +931,16 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int recvfrom(int s, void *mem, size_t len,
+	     int flags, struct sockaddr *from,
+	     socklen_t *fromlen)
+{
+	return uk_syscall_e_recvfrom((long)s, (long)mem, (long)len, (long)flags,
+				     (long)from, (long)fromlen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, recvmsg, int, s,
 		    struct msghdr *, msg, int, flags)
 {
@@ -848,6 +960,13 @@ UK_LLSYSCALL_R_DEFINE(int, recvmsg, int, s,
 EXIT:
 	return ret;
 }
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int recvmsg(int s, struct msghdr *msg, int flags)
+{
+	return uk_syscall_e_recvmsg((long)s, (long)msg, (long)flags);
+}
+#endif
 
 #ifndef CONFIG_LIBMUSL
 int send(int s, const void *dataptr,
@@ -891,6 +1010,14 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int sendmsg(int s,
+	    const struct msghdr *message, int flags)
+{
+	return uk_syscall_e_sendmsg((long)s, (long)message, (long)flags);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, sendto, int, s, const void *, dataptr, size_t, size,
 		    int, flags, const struct sockaddr *, to, socklen_t, tolen)
 {
@@ -911,12 +1038,30 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int sendto(int s, const void *dataptr, size_t size,
+	   int flags, const struct sockaddr *to, socklen_t tolen)
+{
+	return uk_syscall_e_sendto((long)s, (long)dataptr, (long)size,
+				   (long)flags, (long)to, (long)tolen);
+}
+#endif
+
 UK_LLSYSCALL_R_DEFINE(int, socketpair, int, domain, int, type,
 		    int, protocol, int *, sv)
 {
 	errno = ENOTSUP;
 	return -1;
 }
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int socketpair(int domain, int type,
+	       int protocol, int *sv)
+{
+	return uk_syscall_e_socketpair((long)domain, (long)type, (long)protocol,
+				       (long)sv);
+}
+#endif
 
 #ifdef LWIP_SOCKET
 unsigned int if_nametoindex(const char *ifname)
