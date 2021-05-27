@@ -241,6 +241,7 @@ struct ifreq {
 #define SOCK_DGRAM      2
 #define SOCK_RAW        3
 
+#ifndef CONFIG_LIBMUSL
 /*
  * Option flags per-socket. These must match the SOF_ flags in ip.h (checked in init.c)
  */
@@ -271,6 +272,122 @@ struct ifreq {
 #define SO_CONTIMEO     0x1009 /* Unimplemented: connect timeout */
 #define SO_NO_CHECK     0x100a /* don't create UDP checksum */
 #define SO_BINDTODEVICE 0x100b /* bind to device */
+/*
+ * Level number for (get/set)sockopt() to apply to socket itself.
+ */
+#define  SOL_SOCKET  0xfff    /* options for socket level */
+
+
+#else /* Taken from musl */
+
+
+#define SO_DEBUG        1
+#define SO_REUSEADDR    2
+#define SO_TYPE         3
+#define SO_ERROR        4
+#define SO_DONTROUTE    5
+#define SO_BROADCAST    6
+#define SO_SNDBUF       7
+#define SO_RCVBUF       8
+#define SO_KEEPALIVE    9
+#define SO_OOBINLINE    10
+#define SO_NO_CHECK     11
+#define SO_PRIORITY     12
+#define SO_LINGER       13
+#define SO_BSDCOMPAT    14
+#define SO_REUSEPORT    15
+#define SO_PASSCRED     16
+#define SO_PEERCRED     17
+#define SO_RCVLOWAT     18
+#define SO_SNDLOWAT     19
+#define SO_RCVTIMEO     20
+#define SO_SNDTIMEO     21
+#define SO_ACCEPTCONN   30
+#define SO_SNDBUFFORCE  32
+#define SO_RCVBUFFORCE  33
+#define SO_PROTOCOL     38
+#define SO_DOMAIN       39
+
+
+#define SO_SECURITY_AUTHENTICATION              22
+#define SO_SECURITY_ENCRYPTION_TRANSPORT        23
+#define SO_SECURITY_ENCRYPTION_NETWORK          24
+
+#define SO_BINDTODEVICE 25
+
+#define SO_ATTACH_FILTER        26
+#define SO_DETACH_FILTER        27
+#define SO_GET_FILTER           SO_ATTACH_FILTER
+
+#define SO_PEERNAME             28
+#define SO_TIMESTAMP            29
+#define SCM_TIMESTAMP           SO_TIMESTAMP
+
+#define SO_PEERSEC              31
+#define SO_PASSSEC              34
+#define SO_TIMESTAMPNS          35
+#define SCM_TIMESTAMPNS         SO_TIMESTAMPNS
+#define SO_MARK                 36
+#define SO_TIMESTAMPING         37
+#define SCM_TIMESTAMPING        SO_TIMESTAMPING
+#define SO_RXQ_OVFL             40
+#define SO_WIFI_STATUS          41
+#define SCM_WIFI_STATUS         SO_WIFI_STATUS
+#define SO_PEEK_OFF             42
+#define SO_NOFCS                43
+#define SO_LOCK_FILTER          44
+#define SO_SELECT_ERR_QUEUE     45
+#define SO_BUSY_POLL            46
+#define SO_MAX_PACING_RATE      47
+#define SO_BPF_EXTENSIONS       48
+#define SO_INCOMING_CPU         49
+#define SO_ATTACH_BPF           50
+#define SO_DETACH_BPF           SO_DETACH_FILTER
+#define SO_ATTACH_REUSEPORT_CBPF 51
+#define SO_ATTACH_REUSEPORT_EBPF 52
+#define SO_CNX_ADVICE           53
+#define SCM_TIMESTAMPING_OPT_STATS 54
+#define SO_MEMINFO              55
+#define SO_INCOMING_NAPI_ID     56
+#define SO_COOKIE               57
+#define SCM_TIMESTAMPING_PKTINFO 58
+#define SO_PEERGROUPS           59
+
+#ifndef SOL_SOCKET
+#define SOL_SOCKET      1
+#endif
+
+#define SOL_IP          0
+#define SOL_IPV6        41
+#define SOL_ICMPV6      58
+
+#define SOL_RAW         255
+#define SOL_DECNET      261
+#define SOL_X25         262
+#define SOL_PACKET      263
+#define SOL_ATM         264
+#define SOL_AAL         265
+#define SOL_IRDA        266
+#define SOL_NETBEUI     267
+#define SOL_LLC         268
+#define SOL_DCCP        269
+#define SOL_NETLINK     270
+#define SOL_TIPC        271
+#define SOL_RXRPC       272
+#define SOL_PPPOL2TP    273
+#define SOL_BLUETOOTH   274
+#define SOL_PNPIPE      275
+#define SOL_RDS         276
+#define SOL_IUCV        277
+#define SOL_CAIF        278
+#define SOL_ALG         279
+#define SOL_NFC         280
+#define SOL_KCM         281
+
+#define SOMAXCONN       128
+
+
+#endif
 
 /*
  * Structure used for manipulating linger option.
@@ -280,10 +397,6 @@ struct linger {
   int l_linger;               /* linger time in seconds */
 };
 
-/*
- * Level number for (get/set)sockopt() to apply to socket itself.
- */
-#define  SOL_SOCKET  0xfff    /* options for socket level */
 
 
 #define AF_UNSPEC       0
