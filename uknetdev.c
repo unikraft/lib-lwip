@@ -431,7 +431,7 @@ err_t uknetdev_init(struct netif *nf)
 	struct uk_netdev *dev;
 	struct uk_netdev_conf dev_conf;
 	struct uk_netdev_rxqueue_conf rxq_conf;
-	struct uk_netdev_txqueue_conf txq_conf;
+	struct uk_netdev_txqueue_conf txq_conf = {0};
 	struct lwip_netdev_data *lwip_data;
 	const struct uk_hwaddr *hwaddr;
 	unsigned int i;
