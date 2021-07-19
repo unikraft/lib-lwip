@@ -49,9 +49,17 @@
 #include <errno.h>
 #include <lwip/sockets.h>
 #include <lwip/if_api.h>
+#include <uk/syscall.h>
 
-#define SOCK_NET_SET_ERRNO(errcode) \
-	(errno = -(errcode))
+#ifdef CONFIG_LIBMUSL
+#define SOCK_NET_SET_ERRNO(errcode)
+#else
+#define SOCK_NET_SET_ERRNO(errcode)		\
+	do {					\
+		(errno = -(errcode));		\
+		errcode = -1;			\
+	} while (0)
+#endif /* CONFIG_LIBMUSL */
 
 static int sock_net_close(struct vnode *s_vnode,
 			struct vfscore_file *vfscore_file);
@@ -324,7 +332,7 @@ static int sock_net_ioctl(struct vnode *s_vnode,
 	return lwip_ioctl(file->sock_fd, request, buf);
 }
 
-int socket(int domain, int type, int protocol)
+UK_LLSYSCALL_R_DEFINE(int, socket, int, domain, int, type, int, protocol)
 {
 	int ret = 0;
 	int vfs_fd = 0xff;
@@ -345,9 +353,9 @@ int socket(int domain, int type, int protocol)
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to allocate descriptor %d\n",
 			     errno));
-		ret = -1;
+		ret = vfs_fd;
 		/* Setting the errno */
-		SOCK_NET_SET_ERRNO(vfs_fd);
+		SOCK_NET_SET_ERRNO(ret);
 		goto LWIP_SOCKET_CLEANUP;
 	}
 
@@ -361,7 +369,15 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT;
 }
 
-int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int socket(int domain, int type, int protocol)
+{
+	return uk_syscall_e_socket((long)domain, (long)type, (long)protocol);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, accept, int, s, struct sockaddr *, addr,
+		    socklen_t *, addrlen)
 {
 	int ret = 0;
 	struct sock_net_file *file;
@@ -371,9 +387,9 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to accept incoming connection\n"));
-		ret = -1;
+		ret = PTR2ERR(file);
 		/* Setting the errno */
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 
@@ -382,7 +398,8 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	if (sock_fd < 0) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to accept incoming connection\n"));
-		ret = -1;
+		ret = sock_fd;
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT_FDROP;
 	}
 
@@ -391,9 +408,9 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	if (vfs_fd < 0) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to allocate descriptor for accepted connection\n"));
-		ret = -1;
+		ret = vfs_fd;
 		/* Setting the errno */
-		SOCK_NET_SET_ERRNO(vfs_fd);
+		SOCK_NET_SET_ERRNO(ret);
 		goto LWIP_SOCKET_CLEANUP;
 	}
 	ret = vfs_fd;
@@ -407,7 +424,15 @@ LWIP_SOCKET_CLEANUP:
 	goto EXIT_FDROP;
 }
 
-int bind(int s, const struct sockaddr *name, socklen_t namelen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+{
+	return uk_syscall_e_accept((long)s, (long)addr, (long) addrlen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, bind, int, s, const struct sockaddr *, name,
+		    socklen_t, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -416,9 +441,9 @@ int bind(int s, const struct sockaddr *name, socklen_t namelen)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
+		ret = PTR2ERR(file);
 		/* Setting the errno */
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	/* Bind an incoming connection */
@@ -426,7 +451,7 @@ int bind(int s, const struct sockaddr *name, socklen_t namelen)
 	if (ret < 0) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to bind with socket\n"));
-		ret = -1;
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT_FDROP;
 	}
 EXIT_FDROP:
@@ -435,7 +460,15 @@ EXIT:
 	return ret;
 }
 
-int poll(struct pollfd fds[], nfds_t nfds, int timeout)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int bind(int s, const struct sockaddr *name, socklen_t namelen)
+{
+	return uk_syscall_e_bind((long)s, (long)name, (long)namelen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, poll, struct pollfd *, fds, nfds_t, nfds,
+		      int, timeout)
 {
 	int ret;
 	unsigned int i;
@@ -450,9 +483,9 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 			if (PTRISERR(file)) {
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
-				ret = -1;
+				ret = PTR2ERR(file);
 				/* Setting the errno */
-				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				SOCK_NET_SET_ERRNO(ret);
 				goto EXIT;
 			}
 			lwip_fds[i].fd = file->sock_fd;
@@ -462,8 +495,10 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 	}
 
 	ret = lwip_poll(lwip_fds, nfds, timeout);
-	if (ret < 0)
+	if (ret < 0) {
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
+	}
 
 	for (i = 0; i < nfds; i++) {
 		if (fds[i].fd < 0)
@@ -476,21 +511,28 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int poll(struct pollfd *fds, nfds_t nfds, int timeout)
+{
+	return uk_syscall_e_poll((long)fds, (long)nfds, (long)timeout);
+}
+#endif
+
 #if CONFIG_LWIP_SOCKET_PPOLL
 #if CONFIG_LIBPTHREAD_EMBEDDED
 #define __sigmask   pthread_sigmask
 #else
 #define __sigmask   sigprocmask
 #endif
-int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
-		const sigset_t *sigmask)
+UK_LLSYSCALL_R_DEFINE(int, ppoll, struct pollfd *, fds, nfds_t, nfds,
+		    const struct timespec *, tmo_p, const sigset_t *, sigmask)
 {
 	sigset_t origmask;
 	int timeout, rc, _rc;
 
 	if (!fds) {
-		errno = EFAULT;
-		rc = -1;
+		rc = -EFAULT;
+		SOCK_NET_SET_ERRNO(rc);
 		goto out;
 	}
 
@@ -499,17 +541,27 @@ int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
 	rc = __sigmask(SIG_SETMASK, sigmask, &origmask);
 	if (rc)
 		goto out;
-	rc = poll(fds, nfds, timeout);
+	rc = uk_syscall_e_poll((long)fds, (long)nfds, (long)timeout);
 	_rc = __sigmask(SIG_SETMASK, &origmask, NULL);
 	if (rc == 0 && _rc != 0)
 		rc = _rc;
 out:
 	return rc;
 }
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
+	 const sigset_t *sigmask)
+{
+	return uk_syscall_e_ppoll((long)fds, (long)nfds, (long)tmo_p,
+				  (long)sigmask);
+}
+#endif
+
 #endif /* CONFIG_LWIP_SOCKET_PPOLL */
 
-int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
-		struct timeval *timeout)
+UK_LLSYSCALL_R_DEFINE(int, select, int, nfds,
+		    fd_set *, readfds, fd_set *, writefds, fd_set *, exceptfds,
+		    struct timeval *, timeout)
 {
 	uint64_t nsecs;
 	fd_set rd, wr, xc;
@@ -541,9 +593,9 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 #else
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
-				ret = -1;
+				ret = PTR2ERR(file);
 				/* Setting the errno */
-				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				SOCK_NET_SET_ERRNO(err);
 				goto EXIT;
 #endif
 			}
@@ -564,9 +616,9 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 #else
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
-				ret = -1;
+				ret = PTR2ERR(file);
 				/* Setting the errno */
-				SOCK_NET_SET_ERRNO(PTR2ERR(file));
+				SOCK_NET_SET_ERRNO(ret);
 				goto EXIT;
 #endif
 			}
@@ -643,7 +695,16 @@ EXIT:
 	return ret;
 }
 
-int shutdown(int s, int how)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+	   struct timeval *timeout)
+{
+	return uk_syscall_e_select((long)nfds, (long)readfds, (long)writefds,
+				   (long)exceptfds, (long)timeout);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, shutdown, int, s, int, how)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -652,9 +713,9 @@ int shutdown(int s, int how)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
+		ret = PTR2ERR(file);
 		/* Setting the errno */
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	/* Shutdown of the descriptor */
@@ -664,7 +725,15 @@ EXIT:
 	return ret;
 }
 
-int getpeername(int s, struct sockaddr *name, socklen_t *namelen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int shutdown(int s, int how)
+{
+	return uk_syscall_e_shutdown((long)s, (long)how);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, getpeername, int, s, struct sockaddr *, name,
+		    socklen_t *, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -672,8 +741,8 @@ int getpeername(int s, struct sockaddr *name, socklen_t *namelen)
 	file = sock_net_file_get(s);
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG, ("failed to identify socket\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_getpeername(file->sock_fd, name, namelen);
@@ -682,7 +751,16 @@ EXIT:
 	return ret;
 }
 
-int getsockname(int s, struct sockaddr *name, socklen_t *namelen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getpeername(int s, struct sockaddr *name,
+		socklen_t *namelen)
+{
+	return uk_syscall_e_getpeername((long)s, (long)name, (long)namelen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, getsockname, int, s, struct sockaddr *, name,
+		    socklen_t *, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -690,8 +768,8 @@ int getsockname(int s, struct sockaddr *name, socklen_t *namelen)
 	file = sock_net_file_get(s);
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG, ("failed to identify socket\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_getsockname(file->sock_fd, name, namelen);
@@ -700,7 +778,17 @@ EXIT:
 	return ret;
 }
 
-int getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getsockname(int s, struct sockaddr *name,
+		socklen_t *namelen)
+{
+	return uk_syscall_e_getsockname((long)s, (long)name, (long)namelen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, getsockopt, int, s, int, level,
+		    int, optname, void *, optval,
+		    socklen_t *, optlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -709,8 +797,8 @@ int getsockopt(int s, int level, int optname, void *optval, socklen_t *optlen)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_getsockopt(file->sock_fd, level, optname, optval, optlen);
@@ -719,18 +807,28 @@ EXIT:
 	return ret;
 }
 
-int setsockopt(int s, int level, int optname, const void *optval,
-	       socklen_t optlen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int getsockopt(int s, int level, int optname, void *optval,
+		socklen_t *optlen)
+{
+	return uk_syscall_e_getsockopt((long)s, (long)level, (long)optname,
+				       (long)optval, (long)optlen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, setsockopt, int, s, int, level, int, optname,
+		    const void *, optval, socklen_t, optlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
 
 	file = sock_net_file_get(s);
 	if (PTRISERR(file)) {
+		uk_pr_err("Failed to identify the socket\n");
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_setsockopt(file->sock_fd, level, optname, optval, optlen);
@@ -739,7 +837,17 @@ EXIT:
 	return ret;
 }
 
-int connect(int s, const struct sockaddr *name, socklen_t namelen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int setsockopt(int s, int level, int optname,
+	       const void *optval, socklen_t optlen)
+{
+	return uk_syscall_e_setsockopt((long)s, (long)level, (long)optname,
+				       (long)optval, (long)optlen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, connect, int, s,
+		    const struct sockaddr *, name, socklen_t, namelen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -748,8 +856,8 @@ int connect(int s, const struct sockaddr *name, socklen_t namelen)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_connect(file->sock_fd, name, namelen);
@@ -758,7 +866,14 @@ EXIT:
 	return ret;
 }
 
-int listen(int s, int backlog)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int connect(int s, const struct sockaddr *name, socklen_t namelen)
+{
+	return uk_syscall_e_connect((long)s, (long)name, (long)namelen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, listen, int, s, int, backlog)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -767,8 +882,8 @@ int listen(int s, int backlog)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_listen(file->sock_fd, backlog);
@@ -777,6 +892,14 @@ EXIT:
 	return ret;
 }
 
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int listen(int s, int backlog)
+{
+	return uk_syscall_e_listen((long)s, (long)backlog);
+}
+#endif
+
+#ifndef CONFIG_LIBMUSL
 int recv(int s, void *mem, size_t len, int flags)
 {
 	int ret = 0;
@@ -786,8 +909,8 @@ int recv(int s, void *mem, size_t len, int flags)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_recv(file->sock_fd, mem, len, flags);
@@ -795,9 +918,10 @@ int recv(int s, void *mem, size_t len, int flags)
 EXIT:
 	return ret;
 }
+#endif /* !CONFIG_LIBMUSL */
 
-int recvfrom(int s, void *mem, size_t len, int flags,
-		      struct sockaddr *from, socklen_t *fromlen)
+UK_LLSYSCALL_R_DEFINE(int, recvfrom, int, s, void *, mem, size_t, len,
+		    int, flags, struct sockaddr *, from, socklen_t *, fromlen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -806,8 +930,8 @@ int recvfrom(int s, void *mem, size_t len, int flags,
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_recvfrom(file->sock_fd, mem, len, flags, from, fromlen);
@@ -816,7 +940,18 @@ EXIT:
 	return ret;
 }
 
-int recvmsg(int s, struct msghdr *msg, int flags)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int recvfrom(int s, void *mem, size_t len,
+	     int flags, struct sockaddr *from,
+	     socklen_t *fromlen)
+{
+	return uk_syscall_e_recvfrom((long)s, (long)mem, (long)len, (long)flags,
+				     (long)from, (long)fromlen);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, recvmsg, int, s,
+		    struct msghdr *, msg, int, flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -825,8 +960,8 @@ int recvmsg(int s, struct msghdr *msg, int flags)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_recvmsg(file->sock_fd, msg, flags);
@@ -835,7 +970,16 @@ EXIT:
 	return ret;
 }
 
-int send(int s, const void *dataptr, size_t size, int flags)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int recvmsg(int s, struct msghdr *msg, int flags)
+{
+	return uk_syscall_e_recvmsg((long)s, (long)msg, (long)flags);
+}
+#endif
+
+#ifndef CONFIG_LIBMUSL
+int send(int s, const void *dataptr,
+	 size_t size, int flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -844,8 +988,8 @@ int send(int s, const void *dataptr, size_t size, int flags)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_send(file->sock_fd, dataptr, size, flags);
@@ -853,8 +997,10 @@ int send(int s, const void *dataptr, size_t size, int flags)
 EXIT:
 	return ret;
 }
+#endif /* !CONFIG_LIBMUSL */
 
-int sendmsg(int s, const struct msghdr *message, int flags)
+UK_LLSYSCALL_R_DEFINE(int, sendmsg, int, s,
+		    const struct msghdr *, message, int, flags)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -863,8 +1009,8 @@ int sendmsg(int s, const struct msghdr *message, int flags)
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_sendmsg(file->sock_fd, message, flags);
@@ -873,8 +1019,16 @@ EXIT:
 	return ret;
 }
 
-int sendto(int s, const void *dataptr, size_t size, int flags,
-		    const struct sockaddr *to, socklen_t tolen)
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int sendmsg(int s,
+	    const struct msghdr *message, int flags)
+{
+	return uk_syscall_e_sendmsg((long)s, (long)message, (long)flags);
+}
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, sendto, int, s, const void *, dataptr, size_t, size,
+		    int, flags, const struct sockaddr *, to, socklen_t, tolen)
 {
 	int ret = 0;
 	struct sock_net_file *file = NULL;
@@ -883,8 +1037,8 @@ int sendto(int s, const void *dataptr, size_t size, int flags,
 	if (PTRISERR(file)) {
 		LWIP_DEBUGF(SOCKETS_DEBUG,
 			    ("failed to identify socket descriptor\n"));
-		ret = -1;
-		SOCK_NET_SET_ERRNO(PTR2ERR(file));
+		ret = PTR2ERR(file);
+		SOCK_NET_SET_ERRNO(ret);
 		goto EXIT;
 	}
 	ret = lwip_sendto(file->sock_fd, dataptr, size, flags, to, tolen);
@@ -893,11 +1047,33 @@ EXIT:
 	return ret;
 }
 
-int socketpair(int domain, int type, int protocol, int sv[2])
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int sendto(int s, const void *dataptr, size_t size,
+	   int flags, const struct sockaddr *to, socklen_t tolen)
 {
-	errno = ENOTSUP;
-	return -1;
+	return uk_syscall_e_sendto((long)s, (long)dataptr, (long)size,
+				   (long)flags, (long)to, (long)tolen);
 }
+#endif
+
+UK_LLSYSCALL_R_DEFINE(int, socketpair, int, domain, int, type,
+		    int, protocol, int *, sv)
+{
+	int ret = -ENOTSUP;
+
+	SOCK_NET_SET_ERRNO(ret);
+
+	return ret;
+}
+
+#if CONFIG_LWIP_LIBC_FUNCTIONS_ENABLE
+int socketpair(int domain, int type,
+	       int protocol, int *sv)
+{
+	return uk_syscall_e_socketpair((long)domain, (long)type, (long)protocol,
+				       (long)sv);
+}
+#endif
 
 #ifdef LWIP_SOCKET
 unsigned int if_nametoindex(const char *ifname)
