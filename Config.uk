@@ -117,6 +117,10 @@ config LWIP_IPV6
 	bool "IPv6 support"
 	default n
 
+menuconfig LWIP_RAW
+	bool "RAW support"
+	default n
+
 config LWIP_UDP
 	bool "UDP support"
 	default y
