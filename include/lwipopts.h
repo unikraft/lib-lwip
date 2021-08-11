@@ -110,13 +110,14 @@ void sys_free(void *ptr);
 #if CONFIG_LWIP_IPV6
 #define LWIP_IPV6 1
 #define IPV6_FRAG_COPYHEADER 1
-
 #else
 #define LWIP_IPV6 0
 #endif
 
 #if ((!LWIP_IPV4) && (!LWIP_IPV6))
 #error No IP protocol was selected! Please choose at least one of LWIP_IPV4 and LWIP_IPV6
+#else
+#define IP_REASS_MAX_PBUFS CONFIG_LWIP_IP_REASS_MAX_PBUFS
 #endif
 
 /**
@@ -241,7 +242,8 @@ void sys_free(void *ptr);
  * this at the very last point in this configuration file.
  */
 #ifndef PBUF_POOL_SIZE
-#define PBUF_POOL_SIZE ((TCP_WND + TCP_MSS - 1) / TCP_MSS)
+#include <uk/essentials.h> /* MAX */
+#define PBUF_POOL_SIZE MAX(((TCP_WND + TCP_MSS - 1) / TCP_MSS), 2 * IP_REASS_MAX_PBUFS)
 #endif
 #ifndef PBUF_POOL_BUFSIZE
 /* smallest PBUF_POOL_BUFSIZE which satisfies TCP_WND < PBUF_POOL_SIZE * (PBUF_POOL_BUFSIZE - protocol headers) */
