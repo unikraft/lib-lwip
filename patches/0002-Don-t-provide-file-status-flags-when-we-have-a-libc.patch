@@ -25,7 +25,7 @@ index d70d36c4..72169cd0 100644
  #include "lwip/opt.h"
  
  #if LWIP_SOCKET /* don't build if not configured for use in lwipopts.h */
-@@ -438,6 +440,7 @@ typedef struct ipv6_mreq {
+@@ -447,6 +449,7 @@ typedef struct ipv6_mreq {
  #define F_SETFL 4
  #endif
  
@@ -33,7 +33,7 @@ index d70d36c4..72169cd0 100644
  /* File status flags and file access modes for fnctl,
     these are bits in an int. */
  #ifndef O_NONBLOCK
-@@ -455,6 +458,7 @@ typedef struct ipv6_mreq {
+@@ -464,6 +467,7 @@ typedef struct ipv6_mreq {
  #ifndef O_RDWR
  #define O_RDWR      (O_RDONLY|O_WRONLY)
  #endif
