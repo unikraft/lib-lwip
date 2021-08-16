@@ -41,8 +41,11 @@ $(eval $(call addlib_s,liblwip,$(CONFIG_LIBLWIP)))
 ################################################################################
 # Sources
 ################################################################################
-LIBLWIP_ZIPNAME=lwip-2.1.2
-LIBLWIP_URL=http://download.savannah.nongnu.org/releases/lwip/$(LIBLWIP_ZIPNAME).zip
+LIBLWIP_TAG=STABLE-2_1_2_RELEASE
+LIBLWIP_ZIPNAME=fork-lwip-$(LIBLWIP_TAG)
+LIBLWIP_URL=https://github.com/unikraft/fork-lwip/archive/refs/tags/$(LIBLWIP_TAG).zip
+LIBLWIP_ORIGIN_SHA256=8f0ae46e2702720ce852b00de5d304adb2809b0203741f299876594bb8be7890
+
 LIBLWIP_PATCHDIR=$(LIBLWIP_BASE)/patches
 $(eval $(call fetch,liblwip,$(LIBLWIP_URL)))
 $(eval $(call patch,liblwip,$(LIBLWIP_PATCHDIR),$(LIBLWIP_ZIPNAME)))
@@ -69,7 +72,7 @@ LIBLWIP_CFLAGS-y += -Wno-type-limits -Wno-unused-parameter
 LIBLWIP_CFLAGS-$(CONFIG_LWIP_DEBUG) += -DUK_DEBUG
 LIBLWIP_CFLAGS-y   += -D__IN_LIBLWIP__
 LIBLWIP_CXXFLAGS-y += -D__IN_LIBLWIP__
-	
+
 ################################################################################
 # Core
 ################################################################################
