@@ -163,8 +163,12 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 
 	/*
 	 * Copy pbuf to netbuf
-	 * NOTE: Unfortunately, lwIP seems not to support zero-copy transmit,
-	 *       yet. As long as we do not have this, we have to copy.
+	 * NOTE: Unfortunately, lwIP seems not to support asynchronous zero-copy
+	 *       transmit, yet. As long as we do not have this, we have to copy
+	 *       for being still able to asynchronously transmit. At least this
+	 *       needs to be done for TCP traffic because of potential
+	 *       retransmissions.
+	 *       Further information: https://savannah.nongnu.org/task/?7896
 	 */
 	wpos = nb->data;
 	for (q = p; q != NULL; q = q->next) {
