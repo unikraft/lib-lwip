@@ -595,7 +595,8 @@ err_t uknetdev_init(struct netif *nf)
 				     | NETIF_CHECKSUM_GEN_UDP
 				     | NETIF_CHECKSUM_GEN_TCP
 				     | NETIF_CHECKSUM_GEN_ICMP
-				     | NETIF_CHECKSUM_GEN_ICMP6));
+				     | NETIF_CHECKSUM_GEN_ICMP6
+				     | NETIF_CHECKSUM_CHECK_IP));
 	LWIP_DEBUGF(NETIF_DEBUG,
 		    ("%s: %c%c%u: chksum_flags: %"PRIx16"\n",
 		     __func__, nf->name[0], nf->name[1], nf->num,
