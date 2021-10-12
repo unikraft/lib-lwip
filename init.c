@@ -253,6 +253,14 @@ no_conf:
 			continue;
 		}
 
+		/* Print hardware address */
+		if (nf->hwaddr_len == 6) {
+			uk_pr_info("%c%c%u: Hardware address: %02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8"\n",
+				   nf->name[0], nf->name[1], nf->num,
+				   nf->hwaddr[0], nf->hwaddr[1], nf->hwaddr[2],
+				   nf->hwaddr[3], nf->hwaddr[4], nf->hwaddr[5]);
+		}
+
 		/* Declare the first network device as default interface */
 		if (is_first_nf) {
 			uk_pr_info("%c%c%u: Set as default interface\n",
