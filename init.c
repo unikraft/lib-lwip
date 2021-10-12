@@ -138,6 +138,7 @@ static int liblwip_init(void)
 	const char  __maybe_unused *strcfg;
 	uint16_t  __maybe_unused int16cfg;
 	int is_first_nf;
+	int ret;
 #if LWIP_IPV4
 	ip4_addr_t ip4;
 	ip4_addr_t *ip4_arg;
@@ -174,11 +175,24 @@ static int liblwip_init(void)
 		dev = uk_netdev_get(devid);
 		if (!dev)
 			continue;
-		if (uk_netdev_state_get(dev) != UK_NETDEV_UNCONFIGURED) {
+		if (uk_netdev_state_get(dev) != UK_NETDEV_UNCONFIGURED
+		    && uk_netdev_state_get(dev) != UK_NETDEV_UNPROBED) {
 			uk_pr_info("Skipping to add network device %u to lwIP: Not in unconfigured state\n",
 				    devid);
 			continue;
 		}
+
+		if (uk_netdev_state_get(dev) == UK_NETDEV_UNPROBED) {
+			ret = uk_netdev_probe(dev);
+			if (ret < 0) {
+				uk_pr_err("Failed to probe features of network device %u: %d; skipping device...\n",
+					  devid, ret);
+				continue;
+			}
+		}
+
+		/* Here, the device has to be in unconfigured state */
+		UK_ASSERT(uk_netdev_state_get(dev) == UK_NETDEV_UNCONFIGURED);
 
 		uk_pr_info("Attach network device %u to lwIP...\n",
 			   devid);
