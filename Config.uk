@@ -7,6 +7,33 @@ menuconfig LIBLWIP
 	select HAVE_NW_STACK
 
 if LIBLWIP
+choice
+	prompt "Version"
+	default LWIP_RELEASE212
+	help
+		Select the version of the upstream lwIP stack
+		sources that will be downloaded.
+		Please note that you should run `make properclean`
+		whenever you change the version.
+
+config LWIP_RELEASE212
+	bool "Release 2.1.2"
+	help
+		An official release from the lwIP community.
+
+config LWIP_LATEST21X
+	bool "Latest 2.1.x (unofficial)"
+	help
+		The latest available lwIP version from the 2.1
+		release series that include recent bugfixes and
+		security patches.
+		Please note that there is a little chance that
+		depending on the changes upstream, the Unikraft
+		code could become incompatible. In such a case,
+		we recommend to select a released and officially
+		supported version instead.
+endchoice
+
 menu "Netif drivers"
 config LWIP_UKNETDEV
 	bool "Unikraft Netdev Ethernet (libuknetdev)"
