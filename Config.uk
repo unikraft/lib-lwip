@@ -9,7 +9,7 @@ menuconfig LIBLWIP
 if LIBLWIP
 choice
 	prompt "Version"
-	default LWIP_RELEASE212
+	default LWIP_UNIKRAFT21X
 	help
 		Select the version of the upstream lwIP stack
 		sources that will be downloaded.
@@ -32,6 +32,16 @@ config LWIP_LATEST21X
 		code could become incompatible. In such a case,
 		we recommend to select a released and officially
 		supported version instead.
+
+config LWIP_UNIKRAFT21X
+	bool "Unikraft 2.1.x (official)"
+	help
+		Unikraft official latest available and tested lwIP
+		version. This version is based on the latest lwIP
+		release from the 2.1 release series, includes some
+		recent bugfixes and security patches, and includes
+		latest features developed by the Unikraft community
+		that are currently upstreamed to lwIP.
 endchoice
 
 menu "Netif drivers"
