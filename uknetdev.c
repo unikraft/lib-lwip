@@ -349,7 +349,6 @@ static void uknetdev_updown(struct netif *nf)
 	lwip_data = (struct lwip_netdev_data *)dev->scratch_pad;
 
 	/* Enable and disable interrupts according to netif's up/down status */
-
 	if (nf->flags & NETIF_FLAG_UP) {
 		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
 			ret = uk_netdev_rxq_intr_enable(dev, 0);
@@ -477,7 +476,7 @@ err_t uknetdev_init(struct netif *nf)
 		return ERR_IF;
 #if CONFIG_LWIP_UKNETDEV_POLLONLY
 	/* Unset receive interrupt support: We force polling mode */
-	lwip_data->dev_info.features &= ~UK_FEATURE_RXQ_INTR_AVAILABLE;
+	lwip_data->dev_info.features &= ~UK_NETDEV_F_RXQ_INTR;
 #endif /* CONFIG_LWIP_UKNETDEV_POLLONLY */
 	lwip_data->pkt_a = a;
 
