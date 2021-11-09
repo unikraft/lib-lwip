@@ -269,9 +269,25 @@ no_conf:
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_UDP) {
 			uk_pr_info(" UDP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_UDP) {
+				uk_pr_info("[+partial]");
+			}
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_SKIPVALID_UDP) {
+				uk_pr_info("[+offloaded]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_TCP) {
 			uk_pr_info(" TCP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_TCP) {
+				uk_pr_info("[+partial]");
+			}
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_SKIPVALID_TCP) {
+				uk_pr_info("[+offloaded]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_ICMP) {
 			uk_pr_info(" ICMP");
@@ -288,9 +304,19 @@ no_conf:
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_UDP) {
 			uk_pr_info(" UDP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_UDP) {
+				uk_pr_info("[partial]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_TCP) {
 			uk_pr_info(" TCP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_TCP) {
+				uk_pr_info("[partial]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
 		}
 		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_ICMP) {
 			uk_pr_info(" ICMP");
