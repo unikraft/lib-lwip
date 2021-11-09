@@ -213,9 +213,12 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	UK_ASSERT(nb->len == p->tot_len);
 
 	/* Transmit packet */
-	do {
+	ret = uk_netdev_tx_one(dev, 0, nb);
+	while (unlikely(uk_netdev_status_notready(ret))) {
+		/* Allow other threads to do work and re-try */
+		uk_sched_yield();
 		ret = uk_netdev_tx_one(dev, 0, nb);
-	} while (uk_netdev_status_notready(ret));
+	}
 	if (unlikely(ret < 0)) {
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
