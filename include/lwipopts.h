@@ -62,8 +62,10 @@ void sys_free(void *ptr);
  */
 #if CONFIG_LWIP_NOTHREADS
 #define NO_SYS 1
+#define LWIP_NETIF_LOOPBACK_MULTITHREADING 0
 #else  /* CONFIG_LWIP_NOTHREADS */
 #define NO_SYS 0
+#define LWIP_NETIF_LOOPBACK_MULTITHREADING 1
 /* lightweight protection */
 #define SYS_LIGHTWEIGHT_PROT 1
 #define TCPIP_THREAD_NAME "lwip"
@@ -88,7 +90,13 @@ void sys_free(void *ptr);
 #define LWIP_NETIF_EXT_STATUS_CALLBACK 0
 #endif /* CONFIG_LWIP_NETIF_EXT_STATUS_CALLBACK */
 
-#if CONFIG_LWIP_HAVE_LOOPIF
+#if CONFIG_LWIP_LOOPBACK
+/* dest IP can be equal to netif sender IP */
+#define LWIP_NETIF_LOOPBACK 1
+#endif
+
+#if CONFIG_LWIP_LOOPIF
+/* localhost network adapter (127.0.0.1) */
 #define LWIP_HAVE_LOOPIF 1
 #endif
 
