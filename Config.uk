@@ -45,6 +45,15 @@ config LWIP_UNIKRAFT21X
 endchoice
 
 menu "Netif drivers"
+config LWIP_LOOPIF
+	bool "Loop interface"
+	default n
+	select LWIP_LOOPBACK
+	help
+		A driver for localhost (e.g., 127.0.0.1) networking.
+		Note: When lwIP is configured with mainloop mode, the
+		loop interface needs to be polled manually (netif_poll()).
+
 config LWIP_UKNETDEV
 	bool "Unikraft Netdev Ethernet (libuknetdev)"
 	default y
@@ -140,11 +149,13 @@ config LWIP_NETIF_STATUS_PRINT
 	help
 		Print netif status changes to standard console
 
-config LWIP_HAVE_LOOPIF
-	bool "Loopback interface"
-	default n
+config LWIP_LOOPBACK
+	bool "Loopback traffic"
+	default y
 	help
-		Enable loopback interface.
+		Support sending packets with a destination IP address
+		that is equal to the netif IP address, looping them back
+		up the stack.
 
 config LWIP_IPV4
 	bool "IPv4 support"
