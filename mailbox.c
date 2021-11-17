@@ -32,14 +32,18 @@
 #include <uk/mbox.h>
 #include <uk/arch/time.h>
 #include <lwip/sys.h>
+#include <lwipopts.h>
 
 #include <uk/essentials.h>
 
 /* Creates an empty mailbox. */
 err_t sys_mbox_new(sys_mbox_t *mbox, int size)
 {
-	if (size <= 0)
-		size = 32;
+	if (size <= 0) {
+		LWIP_DEBUGF(SOCKETS_DEBUG,
+			    ("Mailbox created with default size.\n"));
+		size = TCPIP_MBOX_SIZE;
+	}
 
 	UK_ASSERT(mbox);
 	mbox->a = uk_alloc_get_default();
