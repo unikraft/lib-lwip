@@ -124,6 +124,39 @@ config LWIP_THREADS
 endchoice
 
 choice
+    prompt "Stack input mailbox size"
+    depends on LWIP_THREADS
+	default LWIP_STACKTHREAD_MBOX_SIZE_256
+    config LWIP_STACKTHREAD_MBOX_SIZE_32
+        bool "32"
+    config LWIP_STACKTHREAD_MBOX_SIZE_64
+        bool "64"
+    config LWIP_STACKTHREAD_MBOX_SIZE_128
+        bool "128"
+	config LWIP_STACKTHREAD_MBOX_SIZE_256
+        bool "256"
+    config LWIP_STACKTHREAD_MBOX_SIZE_512
+        bool "512"
+    config LWIP_STACKTHREAD_MBOX_SIZE_1024
+        bool "1024"
+	config LWIP_STACKTHREAD_MBOX_SIZE_2048
+        bool "2048"
+	help
+		This sets the size for the input mailbox that is used for receiving traffic from the network
+		interfaces.
+endchoice
+
+config LWIP_STACKTHREAD_MBOX_SIZE
+    int
+    default 32 if LWIP_STACKTHREAD_MBOX_SIZE_32
+    default 64 if LWIP_STACKTHREAD_MBOX_SIZE_64
+    default 128 if LWIP_STACKTHREAD_MBOX_SIZE_128
+    default 256 if LWIP_STACKTHREAD_MBOX_SIZE_256
+    default 512 if LWIP_STACKTHREAD_MBOX_SIZE_512
+    default 1024 if LWIP_STACKTHREAD_MBOX_SIZE_1024
+    default 2048 if LWIP_STACKTHREAD_MBOX_SIZE_2048
+
+choice
 	prompt "Memory allocation mode"
 	default LWIP_HEAP
 
@@ -247,10 +280,10 @@ config LWIP_DNS_TABLE_SIZE
 	default 32
 endif
 
-config LWIP_SOCKET
+menuconfig LWIP_SOCKET
+	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	bool "Socket API"
 	select LIBVFSCORE
-	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	default y
 
 if LWIP_SOCKET
@@ -269,6 +302,24 @@ if LWIP_SOCKET
 		default y
 		help
 			Enable ppoll() implementation.
+
+	config LWIP_UDP_RECVMBOX_FACTOR
+		int "Factor for UDP recvmbox"
+		depends on LWIP_UDP
+		range 1 5
+		default 2
+		help
+			How many times should the UDP recvmbox be bigger than the LWIP stackthread mbox size.
+			Default 2, maximum 5.
+
+	config LWIP_TCP_RECVMBOX_FACTOR
+		int "Factor for TCP recvmbox"
+		depends on LWIP_TCP
+		range 1 5
+		default 2
+		help
+			How many times should the TCP recvmbox be bigger than the LWIP stackthread mbox size.
+			Default 2, maximum 5.
 endif
 
 menuconfig LWIP_DEBUG
