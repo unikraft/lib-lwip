@@ -538,14 +538,13 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 					FD_CLR(i, readfds);
 					continue;
 				}
-#else
+#endif
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
-#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
@@ -561,14 +560,13 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 					FD_CLR(i, writefds);
 					continue;
 				}
-#else
+#endif
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
-#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
@@ -584,14 +582,13 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 					FD_CLR(i, exceptfds);
 					continue;
 				}
-#else
+#endif
 				LWIP_DEBUGF(SOCKETS_DEBUG,
 					    ("failed to identify socket descriptor\n"));
 				ret = -1;
 				/* Setting the errno */
 				SOCK_NET_SET_ERRNO(PTR2ERR(file));
 				goto EXIT;
-#endif
 			}
 			if (maxfd < file->sock_fd)
 				maxfd = file->sock_fd;
