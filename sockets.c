@@ -890,8 +890,54 @@ EXIT:
 	return ret;
 }
 
-int socketpair(int domain, int type, int protocol, int sv[2])
+int socketpair(int domain, int type, int protocol, int socks[2])
 {
+	int listener;
+	int reuse = 1;
+	union {
+		struct sockaddr_in inaddr;
+		struct sockaddr addr;
+	} a;
+
+	socklen_t addrlen = sizeof(a.inaddr);
+
+	listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	memset(&a, 0, sizeof(a));
+	a.inaddr.sin_family = AF_INET;
+	a.inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	a.inaddr.sin_port = 0;
+
+	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR,
+	       (char*) &reuse, (socklen_t) sizeof(reuse)) == -1)
+		goto error;
+
+	if  (bind(listener, &a.addr, sizeof(a.inaddr)) < 0)
+		goto error;
+
+	if  (getsockname(listener, &a.addr, &addrlen) < 0)
+		goto error;
+
+	if (listen(listener, 1) < 0)
+		goto error;
+
+	socks[0] = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (socks[0] < 0)
+		goto error;
+
+	if (connect(socks[0], &a.addr, sizeof(a.inaddr)) < 0)
+		goto error;
+
+	socks[1] = accept(listener, NULL, NULL);
+
+	if (socks[1] < 0)
+		goto error;
+
+	close(listener);
+	return 0;
+
+error:
 	errno = ENOTSUP;
 	return -1;
 }
