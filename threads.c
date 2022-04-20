@@ -46,12 +46,21 @@
 sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread, void *arg,
 			    int stacksize, int prio __unused)
 {
+	struct uk_sched *s = uk_sched_current();
 	struct uk_thread *t;
 
-	if (stacksize > (__ssz) __STACK_SIZE) {
-		UK_CRASH("Can't create lwIP thread: stack size %u is too large (> %llu). Dying...\n",
-			 stacksize, __STACK_SIZE);
+	UK_ASSERT(s);
+
+	t = uk_sched_thread_create_fn1(s,
+				       (uk_thread_fn1_t) thread, arg,
+				       (size_t) stacksize,
+				       false,
+				       false,
+				       name,
+				       NULL, NULL);
+	if (!t) {
+		uk_pr_err("Failed to create lwIP thread '%s'\n", name);
+		return NULL;
 	}
-	t = uk_thread_create(name, thread, arg);
 	return t;
 }

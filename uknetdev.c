@@ -327,7 +327,7 @@ void uknetdev_poll_all(void)
 
 #else /* CONFIG_LWIP_NOTHREADS */
 
-static void _poll_netif(void *arg)
+static __noreturn void _poll_netif(void *arg)
 {
 	struct netif *nf = (struct netif *) arg;
 
@@ -384,11 +384,11 @@ static void uknetdev_updown(struct netif *nf)
 					("%s: Poll receive enabled\n",
 					 __func__));
 			/* Create a thread */
-			lwip_data->sched = uk_sched_get_default();
+			lwip_data->sched = uk_sched_current();
 			UK_ASSERT(lwip_data->sched);
 			lwip_data->poll_thread =
-				uk_sched_thread_create(lwip_data->sched, NULL,
-						       NULL, _poll_netif, nf);
+				uk_sched_thread_create(lwip_data->sched,
+						       _poll_netif, nf, NULL);
 #else /* CONFIG_HAVE_SCHED */
 			uk_pr_warn("The netdevice does not support interrupt. Ensure the netdevice is polled to receive packets");
 #endif /* CONFIG_HAVE_SCHED */
@@ -520,7 +520,7 @@ err_t uknetdev_init(struct netif *nf)
 	rxq_conf.callback = uknetdev_input;
 	rxq_conf.callback_cookie = nf;
 #ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
-	rxq_conf.s = uk_sched_get_default();
+	rxq_conf.s = uk_sched_current();
 	if (!rxq_conf.s)
 		return ERR_IF;
 
