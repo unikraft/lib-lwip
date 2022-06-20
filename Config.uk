@@ -283,7 +283,7 @@ endif
 menuconfig LWIP_SOCKET
 	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	bool "Socket API"
-	select LIBVFSCORE
+	select LIBPOSIX_SOCKET
 	default y
 
 if LWIP_SOCKET
