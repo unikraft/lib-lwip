@@ -617,7 +617,7 @@ static struct posix_socket_ops lwip_posix_socket_ops = {
 POSIX_SOCKET_FAMILY_REGISTER(AF_INET, &lwip_posix_socket_ops);
 
 #ifdef CONFIG_LWIP_IPV6
-POSIX_SOCKET_FAMILY_REGISTER(AF_INET6, &lwip_posix_socket_ops, NULL);
+POSIX_SOCKET_FAMILY_REGISTER(AF_INET6, &lwip_posix_socket_ops);
 #endif /* CONFIG_LWIP_IPV6 */
 
 #include <lwip/if_api.h>
