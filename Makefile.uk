@@ -94,6 +94,8 @@ LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/serv.c
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/inet.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_DNS) += $(LIBLWIP_BASE)/getnameinfo.c|unikraft
 endif
+
+LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/getifaddrs.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mutex.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/semaphore.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mailbox.c|unikraft
