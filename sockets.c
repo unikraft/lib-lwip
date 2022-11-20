@@ -41,6 +41,7 @@
 #include <vfscore/eventpoll.h>
 
 #include <lwip/sockets.h>
+#include <sys/socket.h>
 #include <lwip/priv/sockets_priv.h>
 #include <lwip/api.h>
 #include <lwip/sys.h>
@@ -619,14 +620,3 @@ POSIX_SOCKET_FAMILY_REGISTER(AF_INET, &lwip_posix_socket_ops);
 #ifdef CONFIG_LWIP_IPV6
 POSIX_SOCKET_FAMILY_REGISTER(AF_INET6, &lwip_posix_socket_ops);
 #endif /* CONFIG_LWIP_IPV6 */
-
-#include <lwip/if_api.h>
-unsigned int if_nametoindex(const char *ifname)
-{
-	return lwip_if_nametoindex(ifname);
-}
-
-char *if_indextoname(unsigned int ifindex, char *ifname)
-{
-	return lwip_if_indextoname(ifindex, ifname);
-}
