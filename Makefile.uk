@@ -133,7 +133,6 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_SOCKET) += $(LIBLWIP_EXTRACTED)/api/sockets.c
 LIBLWIP_SRCS-y += $(LIBLWIP_EXTRACTED)/netif/ethernet.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_UKNETDEV) += $(LIBLWIP_BASE)/netbuf.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_UKNETDEV) += $(LIBLWIP_BASE)/uknetdev.c|unikraft
-#LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_BASE)/in6addr_loopback.c|unikraft
 
 ################################################################################
 # IPv4
@@ -152,7 +151,6 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_DHCP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/dhcp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/dhcp6.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ethip6.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/icmp6.c
-#LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/inet6.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ip6.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ip6_addr.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IPV6) += $(LIBLWIP_EXTRACTED)/core/ipv6/ip6_frag.c
