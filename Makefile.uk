@@ -87,13 +87,6 @@ LIBLWIP_CXXFLAGS-y += -D__IN_LIBLWIP__
 # Core
 ################################################################################
 LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/alloc.c|unikraft
-ifeq ($(CONFIG_LWIP_SOCKET),y)
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/proto.c
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/host.c
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/serv.c
-LIBLWIP_SRCS-y += $(LIBLWIP_BASE)/inet.c|unikraft
-LIBLWIP_SRCS-$(CONFIG_LWIP_DNS) += $(LIBLWIP_BASE)/getnameinfo.c|unikraft
-endif
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mutex.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/semaphore.c|unikraft
 LIBLWIP_SRCS-$(CONFIG_LWIP_THREADS) += $(LIBLWIP_BASE)/mailbox.c|unikraft
