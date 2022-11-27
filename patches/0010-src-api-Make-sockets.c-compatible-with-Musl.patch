@@ -1,19 +1,19 @@
-From 0c4ace19b1d3574b43f5da99f39b1b842b5a9127 Mon Sep 17 00:00:00 2001
-Message-Id: <0c4ace19b1d3574b43f5da99f39b1b842b5a9127.1669326341.git.razvand@unikraft.io>
+From 9125cccb6d4fa4452a22774b004090ec056d762a Mon Sep 17 00:00:00 2001
+Message-Id: <9125cccb6d4fa4452a22774b004090ec056d762a.1669455026.git.razvand@unikraft.io>
 From: Razvan Deaconescu <razvand@unikraft.io>
 Date: Sun, 20 Nov 2022 17:11:56 +0200
-Subject: [PATCH] src/api: Make sockets.c compatible with Musl
+Subject: [PATCH 1/2] src/api: Make sockets.c compatible with Musl
 
-Remove functions, macros, and variables from `src/api/sockets.c` to make
+Remove functions, macros and variables from `src/api/sockets.c` to make
 it compatible with Musl.
 
 Signed-off-by: Razvan Deaconescu <razvand@unikraft.io>
 ---
- src/api/sockets.c | 16 +++-------------
- 1 file changed, 3 insertions(+), 13 deletions(-)
+ src/api/sockets.c | 18 +++++-------------
+ 1 file changed, 5 insertions(+), 13 deletions(-)
 
 diff --git a/src/api/sockets.c b/src/api/sockets.c
-index 097a6a9..edcfce9 100644
+index 097a6a9..5eb8362 100644
 --- a/src/api/sockets.c
 +++ b/src/api/sockets.c
 @@ -37,6 +37,8 @@
@@ -25,7 +25,16 @@ index 097a6a9..edcfce9 100644
  #include <sys/time.h>
  
  #include "lwip/opt.h"
-@@ -88,8 +90,8 @@
+@@ -65,6 +67,8 @@
+ #endif
+ 
+ #include <string.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
+ 
+ #ifdef LWIP_HOOK_FILENAME
+ #include LWIP_HOOK_FILENAME
+@@ -88,8 +92,8 @@
  #define API_SELECT_CB_VAR_FREE(name)              API_VAR_FREE(MEMP_SELECT_CB, name)
  
  #if LWIP_IPV4
@@ -35,7 +44,7 @@ index 097a6a9..edcfce9 100644
        (sin)->sin_family = AF_INET; \
        (sin)->sin_port = lwip_htons((port)); \
        inet_addr_from_ip4addr(&(sin)->sin_addr, ipaddr); \
-@@ -101,7 +103,6 @@
+@@ -101,7 +105,6 @@
  
  #if LWIP_IPV6
  #define IP6ADDR_PORT_TO_SOCKADDR(sin6, ipaddr, port) do { \
@@ -43,7 +52,7 @@ index 097a6a9..edcfce9 100644
        (sin6)->sin6_family = AF_INET6; \
        (sin6)->sin6_port = lwip_htons((port)); \
        (sin6)->sin6_flowinfo = 0; \
-@@ -699,9 +700,6 @@ lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+@@ -699,9 +702,6 @@ lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
      }
  
      IPADDR_PORT_TO_SOCKADDR(&tempaddr, &naddr, port);
@@ -53,7 +62,7 @@ index 097a6a9..edcfce9 100644
      MEMCPY(addr, &tempaddr, *addrlen);
  
      LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_accept(%d) returning new sock=%d addr=", s, newsock));
-@@ -1044,11 +1042,6 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
+@@ -1044,11 +1044,6 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
  #endif /* LWIP_IPV4 && LWIP_IPV6 */
  
    IPADDR_PORT_TO_SOCKADDR(&saddr, fromaddr, port);
@@ -65,7 +74,7 @@ index 097a6a9..edcfce9 100644
    MEMCPY(from, &saddr, *fromlen);
    return truncated;
  }
-@@ -2745,9 +2738,6 @@ lwip_getaddrname(int s, struct sockaddr *name, socklen_t *namelen, u8_t local)
+@@ -2745,9 +2740,6 @@ lwip_getaddrname(int s, struct sockaddr *name, socklen_t *namelen, u8_t local)
    ip_addr_debug_print_val(SOCKETS_DEBUG, naddr);
    LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F")\n", port));
  
