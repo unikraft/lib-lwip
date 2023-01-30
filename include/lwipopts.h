@@ -154,6 +154,10 @@ void sys_free(void *ptr);
 #define TCP_CALCULATE_EFF_SEND_MSS 1
 #define IP_FRAG 0
 
+#ifdef CONFIG_LWIP_TCP_KEEPALIVE
+#define LWIP_TCP_KEEPALIVE 1
+#endif /* CONFIG_LWIP_TCP_KEEPALIVE */
+
 #if CONFIG_LWIP_WND_SCALE
 /*
  * Maximum window and scaling factor
