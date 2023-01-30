@@ -158,6 +158,10 @@ void sys_free(void *ptr);
 #define LWIP_TCP_KEEPALIVE 1
 #endif /* CONFIG_LWIP_TCP_KEEPALIVE */
 
+#ifdef CONFIG_LWIP_TCP_TIMESTAMPS
+#define LWIP_TCP_TIMESTAMPS 1
+#endif /* CONFIG_LWIP_TCP_TIMESTAMPS */
+
 #if CONFIG_LWIP_WND_SCALE
 /*
  * Maximum window and scaling factor
