@@ -129,7 +129,7 @@ static void _lwip_init_done(void *arg __unused)
 /*
  * This function initializing the lwip network stack
  */
-static int liblwip_init(void)
+static int liblwip_init(struct uk_init_ctx *ictx __unused)
 {
 #if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
 	unsigned int devid;
@@ -321,4 +321,10 @@ no_conf:
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 	return 0;
 }
-uk_lib_initcall(liblwip_init);
+
+static void liblwip_term(const struct uk_term_ctx *tctx __unused)
+{
+	/* nothing to do */
+}
+
+uk_lib_initcall(liblwip_init, liblwip_term);
