@@ -42,6 +42,7 @@
 
 #include <lwip/sockets.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <lwip/priv/sockets_priv.h>
 #include <lwip/api.h>
 #include <lwip/sys.h>
@@ -82,12 +83,34 @@ lwip_socket_data_free(struct uk_alloc *a, struct lwip_socket_data *sock_data)
 	uk_free(a, sock_data);
 }
 
+static int
+lwip_socket_apply_flags(struct lwip_socket_data *sock_data, int flags)
+{
+	int val;
+
+	if (flags & SOCK_NONBLOCK) {
+		val = 1;
+
+		val = lwip_ioctl(sock_data->lwip_fd, FIONBIO, &val);
+		if (unlikely(val < 0)) {
+			return -errno;
+		}
+	}
+
+	/* Ignore SOCK_CLOEXEC */
+
+	return 0;
+}
+
+#define SOCK_FLAGS	(SOCK_NONBLOCK | SOCK_CLOEXEC)
+
 static void *
 lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 			 int protocol)
 {
 	struct lwip_socket_data *sock_data;
 	void *ret = NULL;
+	int flags, rc;
 
 	sock_data = lwip_socket_data_alloc(d->allocator);
 	if (unlikely(!sock_data)) {
@@ -95,9 +118,18 @@ lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 		goto EXIT;
 	}
 
+	flags = type & SOCK_FLAGS;
+	type = type & ~SOCK_FLAGS;
+
 	sock_data->lwip_fd = lwip_socket(family, type, protocol);
 	if (unlikely(sock_data->lwip_fd < 0)) {
 		ret = ERR2PTR(-errno);
+		goto LWIP_SOCKET_CLEANUP;
+	}
+
+	rc = lwip_socket_apply_flags(sock_data, flags);
+	if (unlikely(rc)) {
+		ret = ERR2PTR(rc);
 		goto LWIP_SOCKET_CLEANUP;
 	}
 
@@ -114,10 +146,11 @@ LWIP_SOCKET_CLEANUP:
 static void *
 lwip_posix_socket_accept4(struct posix_socket_file *file,
 			  struct sockaddr *restrict addr,
-			  socklen_t *restrict addr_len, int flags __unused)
+			  socklen_t *restrict addr_len, int flags)
 {
 	struct lwip_socket_data *sock_data, *new_sock_data;
 	void *ret = NULL;
+	int rc;
 
 	UK_ASSERT(file->sock_data);
 
@@ -125,7 +158,8 @@ lwip_posix_socket_accept4(struct posix_socket_file *file,
 	UK_ASSERT(sock_data->lwip_fd >= 0);
 
 	/* We allocate the socket data prior to accepting the connection so
-	 * that we do not have to */
+	 * that we do not have to
+	 */
 	new_sock_data = lwip_socket_data_alloc(file->driver->allocator);
 	if (unlikely(!new_sock_data)) {
 		ret = ERR2PTR(-ENOMEM);
@@ -139,12 +173,18 @@ lwip_posix_socket_accept4(struct posix_socket_file *file,
 		goto LWIP_SOCKET_CLEANUP;
 	}
 
-	/* TODO: set the provided flags */
+	rc = lwip_socket_apply_flags(new_sock_data, flags);
+	if (unlikely(rc)) {
+		ret = ERR2PTR(rc);
+		goto LWIP_SOCKET_CLOSE;
+	}
 
 	ret = new_sock_data;
 
 EXIT:
 	return ret;
+LWIP_SOCKET_CLOSE:
+	lwip_close(new_sock_data->lwip_fd);
 LWIP_SOCKET_CLEANUP:
 	lwip_socket_data_free(file->driver->allocator, new_sock_data);
 	goto EXIT;
