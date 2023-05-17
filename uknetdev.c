@@ -177,7 +177,7 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	do {
 		ret = uk_netdev_tx_one(dev, 0, nb);
 	} while (uk_netdev_status_notready(ret));
-	if (unlikely(ret < 0)) {
+	if (unlikely((ret & UK_NETDEV_STATUS_SUCESS) == 0)) {
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
 			     __func__, nf->name[0], nf->name[1], nf->num,
