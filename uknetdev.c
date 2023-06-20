@@ -50,7 +50,7 @@
 #include "lwip/ethip6.h"
 #include "netif/etharp.h"
 #include "netif/ethernet.h"
-#include <uk/arch/atomic.h>
+#include <uk/atomic.h>
 
 #include <uk/essentials.h>
 
