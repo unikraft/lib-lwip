@@ -79,6 +79,7 @@ $(eval $(call uknetdev_scratch_mem,$(CONFIG_LWIP_UKNETDEV_SCRATCH)))
 # Library flags
 ################################################################################
 LIBLWIP_CFLAGS-y += -Wno-type-limits -Wno-unused-parameter
+LIBLWIP_CFLAGS-$(call have_clang) += -Wno-macro-redefined
 LIBLWIP_CFLAGS-$(CONFIG_LWIP_DEBUG) += -DUK_DEBUG
 LIBLWIP_CFLAGS-y   += -D__IN_LIBLWIP__
 LIBLWIP_CXXFLAGS-y += -D__IN_LIBLWIP__
