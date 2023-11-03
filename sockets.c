@@ -38,7 +38,6 @@
 #include <uk/print.h>
 #include <uk/essentials.h>
 #include <uk/socket_driver.h>
-#include <vfscore/eventpoll.h>
 
 #include <lwip/sockets.h>
 #include <sys/socket.h>
@@ -47,51 +46,22 @@
 #include <lwip/api.h>
 #include <lwip/sys.h>
 
-struct lwip_socket_data {
-	/* fd of the corresponding lwip socket */
-	int lwip_fd;
 
-	/* List of registered eventpolls. The list is synchronized with
-	 * lwip SYS_ARCH_PROTECT, as this lock is held anyways during the event
-	 * callback and needed during poll to receive a current event state
-	 * from the lwip socket.
-	 */
-	struct uk_list_head evp_list;
-};
-
-static struct lwip_socket_data *
-lwip_socket_data_alloc(struct uk_alloc *a)
+static inline
+int _lwip_getfd(posix_sock *sock)
 {
-	struct lwip_socket_data *sock_data;
-
-	sock_data = uk_malloc(a, sizeof(struct lwip_socket_data));
-	if (unlikely(!sock_data))
-		return NULL;
-
-	sock_data->lwip_fd = -1;
-
-	UK_INIT_LIST_HEAD(&sock_data->evp_list);
-
-	return sock_data;
-}
-
-static void
-lwip_socket_data_free(struct uk_alloc *a, struct lwip_socket_data *sock_data)
-{
-	UK_ASSERT(sock_data);
-
-	uk_free(a, sock_data);
+	return (intptr_t)posix_sock_get_data(sock);
 }
 
 static int
-lwip_socket_apply_flags(struct lwip_socket_data *sock_data, int flags)
+lwip_socket_apply_flags(int lwip_fd, int flags)
 {
 	int val;
 
 	if (flags & SOCK_NONBLOCK) {
 		val = 1;
 
-		val = lwip_ioctl(sock_data->lwip_fd, FIONBIO, &val);
+		val = lwip_ioctl(lwip_fd, FIONBIO, &val);
 		if (unlikely(val < 0)) {
 			return -errno;
 		}
@@ -102,108 +72,67 @@ lwip_socket_apply_flags(struct lwip_socket_data *sock_data, int flags)
 	return 0;
 }
 
-#define SOCK_FLAGS	(SOCK_NONBLOCK | SOCK_CLOEXEC)
-
 static void *
 lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 			 int protocol)
 {
-	struct lwip_socket_data *sock_data;
-	void *ret = NULL;
+	int lwip_fd;
 	int flags, rc;
 
-	sock_data = lwip_socket_data_alloc(d->allocator);
-	if (unlikely(!sock_data)) {
-		ret = ERR2PTR(-ENOMEM);
-		goto EXIT;
-	}
-
-	flags = type & SOCK_FLAGS;
+	/* Blocking is handled by posix-socket */
+	flags = type & SOCK_FLAGS | SOCK_NONBLOCK;
 	type = type & ~SOCK_FLAGS;
 
-	sock_data->lwip_fd = lwip_socket(family, type, protocol);
-	if (unlikely(sock_data->lwip_fd < 0)) {
-		ret = ERR2PTR(-errno);
-		goto LWIP_SOCKET_CLEANUP;
-	}
+	lwip_fd = lwip_socket(family, type, protocol);
+	if (unlikely(lwip_fd < 0))
+		return ERR2PTR(-errno);
 
-	rc = lwip_socket_apply_flags(sock_data, flags);
+	rc = lwip_socket_apply_flags(lwip_fd, flags);
 	if (unlikely(rc)) {
-		ret = ERR2PTR(rc);
-		goto LWIP_SOCKET_CLEANUP;
+		(void)lwip_close(lwip_fd);
+		return ERR2PTR(rc);
 	}
 
-	ret = sock_data;
-
-EXIT:
-	return ret;
-
-LWIP_SOCKET_CLEANUP:
-	lwip_socket_data_free(d->allocator, sock_data);
-	return ret;
+	return (void *)(intptr_t)lwip_fd;
 }
 
 static void *
-lwip_posix_socket_accept4(struct posix_socket_file *file,
+lwip_posix_socket_accept4(posix_sock *file,
 			  struct sockaddr *restrict addr,
 			  socklen_t *restrict addr_len, int flags)
 {
-	struct lwip_socket_data *sock_data, *new_sock_data;
-	void *ret = NULL;
+	int listen_fd, new_fd;
 	int rc;
 
-	UK_ASSERT(file->sock_data);
+	listen_fd = _lwip_getfd(file);
+	UK_ASSERT(listen_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
+	new_fd = lwip_accept(listen_fd, addr, addr_len);
+	if (unlikely(new_fd < 0))
+		return ERR2PTR(-errno);
 
-	/* We allocate the socket data prior to accepting the connection so
-	 * that we do not have to
-	 */
-	new_sock_data = lwip_socket_data_alloc(file->driver->allocator);
-	if (unlikely(!new_sock_data)) {
-		ret = ERR2PTR(-ENOMEM);
-		goto EXIT;
-	}
-
-	new_sock_data->lwip_fd = lwip_accept(sock_data->lwip_fd,
-					     addr, addr_len);
-	if (unlikely(new_sock_data->lwip_fd < 0)) {
-		ret = ERR2PTR(-errno);
-		goto LWIP_SOCKET_CLEANUP;
-	}
-
-	rc = lwip_socket_apply_flags(new_sock_data, flags);
+	flags |= SOCK_NONBLOCK; /* Blocking is handled by posix-socket */
+	rc = lwip_socket_apply_flags(new_fd, flags);
 	if (unlikely(rc)) {
-		ret = ERR2PTR(rc);
-		goto LWIP_SOCKET_CLOSE;
+		(void)lwip_close(new_fd);
+		return ERR2PTR(rc);
 	}
 
-	ret = new_sock_data;
-
-EXIT:
-	return ret;
-LWIP_SOCKET_CLOSE:
-	lwip_close(new_sock_data->lwip_fd);
-LWIP_SOCKET_CLEANUP:
-	lwip_socket_data_free(file->driver->allocator, new_sock_data);
-	goto EXIT;
+	return (void *)(intptr_t)new_fd;
 }
 
 static int
-lwip_posix_socket_bind(struct posix_socket_file *file,
+lwip_posix_socket_bind(posix_sock *file,
 		       const struct sockaddr *addr,
 		       socklen_t addr_len)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_bind(sock_data->lwip_fd, addr, addr_len);
+	ret = lwip_bind(lwip_fd, addr, addr_len);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -211,17 +140,15 @@ lwip_posix_socket_bind(struct posix_socket_file *file,
 }
 
 static int
-lwip_posix_socket_shutdown(struct posix_socket_file *file, int how)
+lwip_posix_socket_shutdown(posix_sock *file, int how)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_shutdown(sock_data->lwip_fd, how);
+	ret = lwip_shutdown(lwip_fd, how);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -229,19 +156,17 @@ lwip_posix_socket_shutdown(struct posix_socket_file *file, int how)
 }
 
 static int
-lwip_posix_socket_getpeername(struct posix_socket_file *file,
+lwip_posix_socket_getpeername(posix_sock *file,
 			      struct sockaddr *restrict addr,
 			      socklen_t *restrict addr_len)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_getpeername(sock_data->lwip_fd, addr, addr_len);
+	ret = lwip_getpeername(lwip_fd, addr, addr_len);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -249,19 +174,17 @@ lwip_posix_socket_getpeername(struct posix_socket_file *file,
 }
 
 static int
-lwip_posix_socket_getsockname(struct posix_socket_file *file,
+lwip_posix_socket_getsockname(posix_sock *file,
 			      struct sockaddr *restrict addr,
 			      socklen_t *restrict addr_len)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_getsockname(sock_data->lwip_fd, addr, addr_len);
+	ret = lwip_getsockname(lwip_fd, addr, addr_len);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -269,20 +192,17 @@ lwip_posix_socket_getsockname(struct posix_socket_file *file,
 }
 
 static int
-lwip_posix_socket_getsockopt(struct posix_socket_file *file, int level,
+lwip_posix_socket_getsockopt(posix_sock *file, int level,
 			     int optname, void *restrict optval,
 			     socklen_t *restrict optlen)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_getsockopt(sock_data->lwip_fd, level, optname,
-			      optval, optlen);
+	ret = lwip_getsockopt(lwip_fd, level, optname, optval, optlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -290,19 +210,16 @@ lwip_posix_socket_getsockopt(struct posix_socket_file *file, int level,
 }
 
 static int
-lwip_posix_socket_setsockopt(struct posix_socket_file *file, int level,
+lwip_posix_socket_setsockopt(posix_sock *file, int level,
 			     int optname, const void *optval, socklen_t optlen)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_setsockopt(sock_data->lwip_fd, level, optname,
-			      optval, optlen);
+	ret = lwip_setsockopt(lwip_fd, level, optname, optval, optlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -310,18 +227,16 @@ lwip_posix_socket_setsockopt(struct posix_socket_file *file, int level,
 }
 
 static int
-lwip_posix_socket_connect(struct posix_socket_file *file,
+lwip_posix_socket_connect(posix_sock *file,
 			  const struct sockaddr *addr, socklen_t addr_len)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_connect(sock_data->lwip_fd, addr, addr_len);
+	ret = lwip_connect(lwip_fd, addr, addr_len);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -329,17 +244,15 @@ lwip_posix_socket_connect(struct posix_socket_file *file,
 }
 
 static int
-lwip_posix_socket_listen(struct posix_socket_file *file, int backlog)
+lwip_posix_socket_listen(posix_sock *file, int backlog)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_listen(sock_data->lwip_fd, backlog);
+	ret = lwip_listen(lwip_fd, backlog);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -347,19 +260,17 @@ lwip_posix_socket_listen(struct posix_socket_file *file, int backlog)
 }
 
 static ssize_t
-lwip_posix_socket_recvfrom(struct posix_socket_file *file, void *restrict buf,
+lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 			   size_t len, int flags, struct sockaddr *from,
 			   socklen_t *restrict fromlen)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_recvfrom(sock_data->lwip_fd, buf, len, flags, from, fromlen);
+	ret = lwip_recvfrom(lwip_fd, buf, len, flags, from, fromlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -367,18 +278,16 @@ lwip_posix_socket_recvfrom(struct posix_socket_file *file, void *restrict buf,
 }
 
 static ssize_t
-lwip_posix_socket_recvmsg(struct posix_socket_file *file, struct msghdr *msg,
+lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 			  int flags)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_recvmsg(sock_data->lwip_fd, msg, flags);
+	ret = lwip_recvmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -386,18 +295,16 @@ lwip_posix_socket_recvmsg(struct posix_socket_file *file, struct msghdr *msg,
 }
 
 static ssize_t
-lwip_posix_socket_sendmsg(struct posix_socket_file *file,
+lwip_posix_socket_sendmsg(posix_sock *file,
 			  const struct msghdr *msg, int flags)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_sendmsg(sock_data->lwip_fd, msg, flags);
+	ret = lwip_sendmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -405,20 +312,18 @@ lwip_posix_socket_sendmsg(struct posix_socket_file *file,
 }
 
 static ssize_t
-lwip_posix_socket_sendto(struct posix_socket_file *file, const void *buf,
+lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			 size_t len, int flags,
 			 const struct sockaddr *dest_addr,
 			 socklen_t addrlen)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_sendto(sock_data->lwip_fd, buf, len, flags,
+	ret = lwip_sendto(lwip_fd, buf, len, flags,
 			  dest_addr, addrlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
@@ -427,18 +332,16 @@ lwip_posix_socket_sendto(struct posix_socket_file *file, const void *buf,
 }
 
 static ssize_t
-lwip_posix_socket_read(struct posix_socket_file *file, const struct iovec *iov,
+lwip_posix_socket_read(posix_sock *file, const struct iovec *iov,
 		       int iovcnt)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_readv(sock_data->lwip_fd, iov, iovcnt);
+	ret = lwip_readv(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -446,18 +349,16 @@ lwip_posix_socket_read(struct posix_socket_file *file, const struct iovec *iov,
 }
 
 static ssize_t
-lwip_posix_socket_write(struct posix_socket_file *file, const struct iovec *iov,
+lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 		       int iovcnt)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	ssize_t ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_writev(sock_data->lwip_fd, iov, iovcnt);
+	ret = lwip_writev(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -465,37 +366,31 @@ lwip_posix_socket_write(struct posix_socket_file *file, const struct iovec *iov,
 }
 
 static int
-lwip_posix_socket_close(struct posix_socket_file *file)
+lwip_posix_socket_close(posix_sock *file)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_close(sock_data->lwip_fd);
+	ret = lwip_close(lwip_fd);
 	if (unlikely(ret < 0))
 		ret = -errno;
-
-	lwip_socket_data_free(file->driver->allocator, sock_data);
 
 	return ret;
 }
 
 static int
-lwip_posix_socket_ioctl(struct posix_socket_file *file, int request, void *argp)
+lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 {
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
 	int ret;
 
-	UK_ASSERT(file->sock_data);
+	lwip_fd = _lwip_getfd(file);
+	UK_ASSERT(lwip_fd >= 0);
 
-	sock_data = (struct lwip_socket_data *)file->sock_data;
-	UK_ASSERT(sock_data->lwip_fd >= 0);
-
-	ret = lwip_ioctl(sock_data->lwip_fd, request, argp);
+	ret = lwip_ioctl(lwip_fd, request, argp);
 	if (unlikely(ret < 0))
 		ret = -errno;
 
@@ -545,60 +440,29 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 				 enum netconn_evt evt __unused,
 				 u16_t len __unused)
 {
-	struct lwip_socket_data *sock_data;
-	struct eventpoll_cb *ecb;
-	struct uk_list_head *itr;
+	posix_sock *sockobj;
 	unsigned int events;
 
 	UK_ASSERT(sock);
-
 	if (unlikely(!sock->sock_data))
 		return;
 
-	sock_data = (struct lwip_socket_data *)sock->sock_data;
-	UK_ASSERT(sock_data->lwip_fd == sock->conn->socket);
+	sockobj = (posix_sock *)sock->sock_data;
+	UK_ASSERT(_lwip_getfd(sockobj) == sock->conn->socket);
 
 	events = get_lwip_socket_events(sock);
-	if (!events)
-		return;
-
-	uk_list_for_each(itr, &sock_data->evp_list) {
-		ecb = uk_list_entry(itr, struct eventpoll_cb, cb_link);
-
-		UK_ASSERT(ecb->unregister);
-
-		eventpoll_signal(ecb, events);
-	}
+	posix_sock_event_assign(sockobj, events);
 }
 
 static void
-lwip_socket_unregister_eventpoll(struct eventpoll_cb *ecb)
+lwip_posix_socket_poll(posix_sock *file)
 {
-	SYS_ARCH_DECL_PROTECT(lev);
-
-	UK_ASSERT(ecb);
-
-	SYS_ARCH_PROTECT(lev);
-	UK_ASSERT(!uk_list_empty(&ecb->cb_link));
-	uk_list_del(&ecb->cb_link);
-
-	ecb->data = NULL;
-	ecb->unregister = NULL;
-	SYS_ARCH_UNPROTECT(lev);
-}
-
-static int
-lwip_posix_socket_poll(struct posix_socket_file *file, unsigned int *revents,
-		       struct eventpoll_cb *ecb)
-{
-	struct lwip_socket_data *sock_data;
+	int lwip_fd;
+	unsigned revents;
 	struct lwip_sock *sock;
 	SYS_ARCH_DECL_PROTECT(lev);
 
-	UK_ASSERT(file->sock_data);
-	UK_ASSERT(revents);
-
-	sock_data = (struct lwip_socket_data *)file->sock_data;
+	lwip_fd = _lwip_getfd(file);
 
 	SYS_ARCH_PROTECT(lev);
 	/* This is a bit hacky but lwip does not provide a different public
@@ -608,27 +472,11 @@ lwip_posix_socket_poll(struct posix_socket_file *file, unsigned int *revents,
 	 * we need to hold the lock for evaluating the socket state this fits
 	 * in well.
 	 */
-	sock = lwip_socket_dbg_get_socket(sock_data->lwip_fd);
-	*revents = get_lwip_socket_events(sock);
-
-	if (!ecb->unregister) {
-		UK_ASSERT(uk_list_empty(&ecb->cb_link));
-		UK_ASSERT(!ecb->data);
-
-		/* This is the first time we see this cb. Add it to the
-		 * eventpoll list and set the unregister callback so
-		 * we remove it when the eventpoll is freed.
-		 */
-		uk_list_add_tail(&ecb->cb_link, &sock_data->evp_list);
-
-		ecb->data = sock_data;
-		ecb->unregister = lwip_socket_unregister_eventpoll;
-
-		sock->sock_data = sock_data;
-	}
+	sock = lwip_socket_dbg_get_socket(lwip_fd);
+	revents = get_lwip_socket_events(sock);
+	sock->sock_data = (void *)file;
 	SYS_ARCH_UNPROTECT(lev);
-
-	return 0;
+	posix_sock_event_assign(file, revents);
 }
 
 static struct posix_socket_ops lwip_posix_socket_ops = {
