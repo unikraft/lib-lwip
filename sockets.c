@@ -48,6 +48,11 @@
 #include <lwip/tcp.h>
 #include <lwip/tcpbase.h>
 
+static inline
+int _lwip_ignore_noncrit_msgflags(int flags)
+{
+	return flags & ~(MSG_NOSIGNAL);
+}
 
 static inline
 int _lwip_getfd(posix_sock *sock)
@@ -277,6 +282,8 @@ lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 	int lwip_fd;
 	ssize_t ret;
 
+	flags = _lwip_ignore_noncrit_msgflags(flags);
+
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
@@ -293,6 +300,8 @@ lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 {
 	int lwip_fd;
 	ssize_t ret;
+
+	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
@@ -311,9 +320,10 @@ lwip_posix_socket_sendmsg(posix_sock *file,
 	int lwip_fd;
 	ssize_t ret;
 
+	flags = _lwip_ignore_noncrit_msgflags(flags);
+
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
-
 	ret = lwip_sendmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
@@ -329,6 +339,8 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 {
 	int lwip_fd;
 	ssize_t ret;
+
+	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
