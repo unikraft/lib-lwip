@@ -63,15 +63,11 @@ int _lwip_getfd(posix_sock *sock)
 static int
 lwip_socket_apply_flags(int lwip_fd, int flags)
 {
-	int val;
+	int val = 1;
 
-	if (flags & SOCK_NONBLOCK) {
-		val = 1;
-
-		val = lwip_ioctl(lwip_fd, FIONBIO, &val);
-		if (unlikely(val < 0)) {
-			return -errno;
-		}
+	val = lwip_ioctl(lwip_fd, FIONBIO, &val);
+	if (unlikely(val < 0)) {
+		return -errno;
 	}
 
 	/* Ignore SOCK_CLOEXEC */
