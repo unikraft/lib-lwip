@@ -203,7 +203,7 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 		gw4_arg   = NULL;
 
 		/* IP */
-		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_ADDR_STR);
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_ADDR);
 		if (strcfg) {
 			if (ip4addr_aton(strcfg, &ip4) != 1) {
 				uk_pr_err("Error converting IP address: %s\n",
@@ -215,7 +215,7 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 		ip4_arg = &ip4;
 
 		/* mask */
-		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_MASK_STR);
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_MASK);
 		if (strcfg) {
 			if (ip4addr_aton(strcfg, &mask4) != 1) {
 				uk_pr_err("Error converting net mask: %s\n",
@@ -228,7 +228,7 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 		mask4_arg = &mask4;
 
 		/* gateway */
-		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_GW_STR);
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_GW);
 		if (strcfg) {
 			if (ip4addr_aton(strcfg, &gw4) != 1) {
 				uk_pr_err("Error converting gateway: %s\n",
