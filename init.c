@@ -32,6 +32,7 @@
  */
 
 #include <uk/config.h>
+#include <string.h>
 #include "lwip/opt.h"
 #include "lwip/tcpip.h"
 #include "lwip/init.h"
@@ -202,6 +203,55 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 		mask4_arg = NULL;
 		gw4_arg   = NULL;
 
+		/* CIDR (IP and mask) */
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_CIDR);
+		if (strcfg) {
+			long maskbits;
+			char str_ipaddr[16]; /* Can hold "255.255.255.255\0" */
+			size_t strlen_ipaddr;
+			const char *str_maskbits;
+
+			str_maskbits = strchr(strcfg, '/');
+			if (!str_maskbits) {
+				uk_pr_err("Failed to find maskbits separator of CIDR IP address: %s\n",
+					  strcfg);
+				goto ipv4_legacy;
+			}
+			strlen_ipaddr = (size_t) str_maskbits - (size_t) strcfg;
+			if (strlen_ipaddr > ARRAY_SIZE(str_ipaddr)) {
+				uk_pr_err("IP address length out of range: %s\n",
+					  str_ipaddr);
+				goto ipv4_legacy;
+			}
+			strncpy(str_ipaddr, strcfg, strlen_ipaddr);
+			str_ipaddr[strlen_ipaddr] = '\0';
+			str_maskbits++; /* skip '/' */
+
+			if (ip4addr_aton(str_ipaddr, &ip4) != 1) {
+				uk_pr_err("Error converting IP address: %s\n",
+					  str_ipaddr);
+				goto ipv4_legacy;
+			}
+			maskbits = strtol(str_maskbits, NULL, 10);
+			if (maskbits < 0 || maskbits > 32) {
+				uk_pr_err("Mask bits out of range: %s\n",
+					  str_ipaddr);
+				goto ipv4_legacy;
+			}
+			ip4_addr_set_u32(&mask4,
+					 lwip_htonl(~(__u32)((1LL <<
+							(32 - maskbits)) - 1)));
+
+			uk_pr_debug("Detected IP from IPv4 CIDR: %s\n",
+				    str_ipaddr);
+			uk_pr_debug("Detected mask bits from IPv4 CIDR: %ld\n",
+				    maskbits);
+			ip4_arg = &ip4;
+			mask4_arg = &mask4;
+			goto ipv4_gw;
+		}
+
+ipv4_legacy:
 		/* IP */
 		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_ADDR);
 		if (strcfg) {
@@ -227,6 +277,7 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 			ip4_addr_set_u32(&mask4, lwip_htonl(IP_CLASSC_NET));
 		mask4_arg = &mask4;
 
+ipv4_gw:
 		/* gateway */
 		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_GW);
 		if (strcfg) {
