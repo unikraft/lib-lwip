@@ -147,6 +147,7 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 	ip4_addr_t *mask4_arg;
 	ip4_addr_t gw4;
 	ip4_addr_t *gw4_arg;
+	const char *hostname_arg;
 #endif /* LWIP_IPV4 */
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 
@@ -199,9 +200,10 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 			   devid);
 
 #if LWIP_IPV4
-		ip4_arg   = NULL;
-		mask4_arg = NULL;
-		gw4_arg   = NULL;
+		ip4_arg      = NULL;
+		mask4_arg    = NULL;
+		gw4_arg      = NULL;
+		hostname_arg = NULL;
 
 		/* CIDR (IP and mask) */
 		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_CIDR);
@@ -288,15 +290,22 @@ ipv4_gw:
 			}
 			gw4_arg = &gw4;
 		}
+
 no_conf:
-		nf = uknetdev_addif(dev, ip4_arg, mask4_arg, gw4_arg);
+		/* hostname */
+		strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_HOSTNAME);
+		if (strcfg)
+			hostname_arg = strcfg;
+
+		nf = uknetdev_addif(dev, ip4_arg, mask4_arg, gw4_arg,
+				    hostname_arg);
 #else /* LWIP_IPV4 */
 		/*
 		 * TODO: Add support for IPv6 device configuration from
 		 * netdev's econf interface
 		 */
 
-		nf = uknetdev_addif(dev);
+		nf = uknetdev_addif(dev, NULL);
 #endif /* LWIP_IPV4 */
 		if (!nf) {
 			uk_pr_err("Failed to attach network device %u to lwIP\n",

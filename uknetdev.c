@@ -662,8 +662,9 @@ struct netif *uknetdev_addif(struct uk_netdev *n
 			     ,
 			     const ip4_addr_t *ipaddr,
 			     const ip4_addr_t *netmask,
-			     const ip4_addr_t *gw
+			     const ip4_addr_t *gw,
 #endif /* LWIP_IPV4 */
+			     const char *hostname
 	)
 {
 	/*
@@ -697,6 +698,9 @@ struct netif *uknetdev_addif(struct uk_netdev *n
 		mem_free(nf);
 		return NULL;
 	}
+
+	if (hostname)
+		netif_set_hostname(nf, hostname);
 
 	return ret;
 }
