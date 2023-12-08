@@ -36,6 +36,7 @@
 #include "lwip/opt.h"
 #include "lwip/tcpip.h"
 #include "lwip/init.h"
+#include "lwip/dns.h"
 #include "lwip/dhcp.h"
 #include "lwip/inet.h"
 #if CONFIG_LWIP_NOTHREADS
@@ -148,6 +149,10 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 	ip4_addr_t gw4;
 	ip4_addr_t *gw4_arg;
 	const char *hostname_arg;
+#if LWIP_DNS
+	ip4_addr_t dns4;
+	unsigned int nb_dns4 = 0;
+#endif /* LWIP_DNS */
 #endif /* LWIP_IPV4 */
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 
@@ -360,6 +365,45 @@ no_conf:
 		}
 		uk_pr_info("\n");
 #endif /* LWIP_CHECKSUM_CTRL_PER_NETIF */
+
+#if LWIP_IPV4 && LWIP_DNS
+		/* Primary DNS */
+		if (nb_dns4 < DNS_MAX_SERVERS) {
+			strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_DNS0);
+			if (strcfg) {
+				if (ip4addr_aton(strcfg, &dns4) != 1) {
+					uk_pr_err("Failed to parse DNS server address: %s\n",
+						  strcfg);
+					goto dns_secondary;
+				}
+
+				dns_setserver(nb_dns4++, &dns4);
+				uk_pr_info("%c%c%u: Primary DNS server: %s\n",
+					   nf->name[0], nf->name[1], nf->num,
+					   strcfg);
+			}
+		}
+
+dns_secondary:
+		/* Secondary DNS */
+		if (nb_dns4 < DNS_MAX_SERVERS) {
+			strcfg = uk_netdev_einfo_get(dev, UK_NETDEV_IPV4_DNS1);
+			if (strcfg) {
+				if (ip4addr_aton(strcfg, &dns4) != 1) {
+					uk_pr_err("Failed to parse DNS server address: %s\n",
+						  strcfg);
+					goto dns_done;
+				}
+
+				dns_setserver(nb_dns4++, &dns4);
+				uk_pr_info("%c%c%u: Secondary DNS server: %s\n",
+					   nf->name[0], nf->name[1], nf->num,
+					   strcfg);
+			}
+		}
+
+dns_done:
+#endif /* LWIP_IPV4 && LWIP_DNS */
 
 		/* Declare the first network device as default interface */
 		if (is_first_nf) {
