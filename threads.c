@@ -53,7 +53,7 @@ sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread, void *arg,
 
 	t = uk_sched_thread_create_fn1(s,
 				       (uk_thread_fn1_t) thread, arg,
-				       (size_t) stacksize,
+				       (size_t) stacksize, 0,
 				       false,
 				       false,
 				       name,
