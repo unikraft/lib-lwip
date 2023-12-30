@@ -80,7 +80,7 @@ lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 	int flags, rc;
 
 	/* Blocking is handled by posix-socket */
-	flags = type & SOCK_FLAGS | SOCK_NONBLOCK;
+	flags = type & (SOCK_FLAGS | SOCK_NONBLOCK);
 	type = type & ~SOCK_FLAGS;
 
 	lwip_fd = lwip_socket(family, type, protocol);
