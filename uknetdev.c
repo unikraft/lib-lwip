@@ -34,6 +34,7 @@
 #include <uk/config.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <uk/alloc.h>
 #include <uk/print.h>
@@ -699,8 +700,12 @@ struct netif *uknetdev_addif(struct uk_netdev *n
 		return NULL;
 	}
 
-	if (hostname)
+	if (hostname) {
 		netif_set_hostname(nf, hostname);
+#if CONFIG_LIBPOSIX_SYSINFO
+		sethostname(hostname, strlen(hostname));
+#endif /* CONFIG_LIBPOSIX_SYSINFO */
+	}
 
 	return ret;
 }
