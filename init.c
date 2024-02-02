@@ -44,6 +44,7 @@
 #else /* CONFIG_LWIP_NOTHREADS */
 #include <uk/semaphore.h>
 #endif /* CONFIG_LWIP_NOTHREADS */
+#include <errno.h>
 #include <uk/netdev_core.h>
 #include "netif/uknetdev.h"
 #include <uk/init.h>
@@ -127,6 +128,8 @@ static void _lwip_init_done(void *arg __unused)
 	uk_semaphore_up(&_lwip_init_sem);
 }
 #endif /* !CONFIG_LWIP_NOTHREADS */
+
+static unsigned int lwip_netif_attached = 0;
 
 /*
  * This function initializing the lwip network stack
@@ -317,6 +320,7 @@ no_conf:
 				  devid);
 			continue;
 		}
+		lwip_netif_attached += 1;
 
 		/* Print hardware address */
 		if (nf->hwaddr_len == 6) {
@@ -421,6 +425,15 @@ dns_done:
 			dhcp_start(nf);
 		}
 #endif /* LWIP_IPV4 && LWIP_DHCP */
+	}
+
+	if (lwip_netif_attached == 0) {
+#if !CONFIG_LWIP_FAILNOIFACE
+		uk_pr_warn("No network interface attached!\n");
+#else /* CONFIG_LWIP_FAILNOIFACE */
+		uk_pr_crit("No network interface attached!\n");
+		return -ETIMEDOUT;
+#endif  /* CONFIG_LWIP_FAILNOIFACE */
 	}
 #endif /* CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE */
 	return 0;

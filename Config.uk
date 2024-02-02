@@ -100,6 +100,10 @@ config LWIP_AUTOIFACE
 		Automatically attach found network devices to the stack
 		during initialization.
 
+config LWIP_FAILNOIFACE
+	bool "Fail boot without netifs"
+	depends on LWIP_AUTOIFACE
+
 choice
 	prompt "Operation mode"
 	default LWIP_THREADS
