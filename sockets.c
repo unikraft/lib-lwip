@@ -209,6 +209,9 @@ lwip_posix_socket_getsockopt(posix_sock *file, int level,
 	return ret;
 }
 
+#define LINUX_SOL_TCP 6
+#define LINUX_TCP_FASTOPEN 23
+
 static int
 lwip_posix_socket_setsockopt(posix_sock *file, int level,
 			     int optname, const void *optval, socklen_t optlen)
@@ -219,6 +222,11 @@ lwip_posix_socket_setsockopt(posix_sock *file, int level,
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
+	if ((level == LINUX_SOL_TCP && optname == LINUX_TCP_FASTOPEN) ||
+	    (level == SOL_IP && optname == IP_RECVERR)) {
+		/* Ignore stuff that LWIP doesn't support */
+		return 0;
+	}
 	ret = lwip_setsockopt(lwip_fd, level, optname, optval, optlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
