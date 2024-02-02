@@ -107,6 +107,7 @@ void sys_free(void *ptr);
 /**
  * ARP options
  */
+#define ARP_QUEUEING 1
 #define MEMP_NUM_ARP_QUEUE 256
 #define ETHARP_SUPPORT_STATIC_ENTRIES 1
 
