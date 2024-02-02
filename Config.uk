@@ -277,6 +277,21 @@ config LWIP_DHCP
 		query the IPv4 addresses for the found devices from a DHCP
 		server on network.
 
+if LWIP_DHCP
+config LWIP_WAITIFACE
+	bool "Wait for 1st interface"
+	depends on LWIP_AUTOIFACE
+	select LWIP_NETIF_EXT_STATUS_CALLBACK
+	select LIBUKLOCK
+	select LIBUKLOCK_SEMAPHORE
+
+config LWIP_WAITIFACE_TO
+	int "Wait timeout (seconds, 0 = forever)"
+	range 0 300
+	default 5
+	depends on LWIP_WAITIFACE
+endif # LWIP_DHCP
+
 menuconfig LWIP_DNS
 	bool "DNS Resolver"
 	default y

@@ -41,9 +41,13 @@
 #include "lwip/inet.h"
 #if CONFIG_LWIP_NOTHREADS
 #include "lwip/timeouts.h"
-#else /* CONFIG_LWIP_NOTHREADS */
-#include <uk/semaphore.h>
 #endif /* CONFIG_LWIP_NOTHREADS */
+#if !CONFIG_LWIP_NOTHREADS || CONFIG_LWIP_WAITIFACE
+#include <uk/semaphore.h>
+#endif /* !CONFIG_LWIP_NOTHREADS || CONFIG_LWIP_WAITIFACE */
+#if CONFIG_LWIP_WAITIFACE
+#include <uk/arch/time.h>
+#endif /* CONFIG_LWIP_WAITIFACE */
 #include <errno.h>
 #include <uk/netdev_core.h>
 #include "netif/uknetdev.h"
@@ -131,6 +135,14 @@ static void _lwip_init_done(void *arg __unused)
 
 static unsigned int lwip_netif_attached = 0;
 
+#if CONFIG_LWIP_WAITIFACE
+static struct uk_semaphore _lwip_waitif_sem;
+NETIF_DECLARE_EXT_CALLBACK(lwip_netif_waitif);
+
+static void _lwip_netif_waitif(struct netif *nf, netif_nsc_reason_t reason,
+			       const netif_ext_callback_args_t *args);
+#endif /* CONFIG_LWIP_WAITIFACE */
+
 /*
  * This function initializing the lwip network stack
  */
@@ -163,6 +175,9 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 #if !CONFIG_LWIP_NOTHREADS
 	uk_semaphore_init(&_lwip_init_sem, 0);
 #endif /* !CONFIG_LWIP_NOTHREADS */
+#if CONFIG_LWIP_WAITIFACE
+	uk_semaphore_init(&_lwip_waitif_sem, 0);
+#endif /* CONFIG_LWIP_WAITIFACE */
 
 #if CONFIG_LWIP_NOTHREADS
 	lwip_init();
@@ -177,6 +192,9 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 	/* Add print callback for netif state changes */
 	netif_add_ext_callback(&netif_status_print, _netif_status_print);
 #endif /* LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT */
+#if CONFIG_LWIP_WAITIFACE
+	netif_add_ext_callback(&lwip_netif_waitif, _lwip_netif_waitif);
+#endif /* CONFIG_LWIP_WAITIFACE */
 
 #if CONFIG_LWIP_UKNETDEV && CONFIG_LWIP_AUTOIFACE
 	is_first_nf = 1;
@@ -445,3 +463,59 @@ static void liblwip_term(const struct uk_term_ctx *tctx __unused)
 }
 
 uk_lib_initcall(liblwip_init, liblwip_term);
+
+#if CONFIG_LWIP_WAITIFACE
+static void _lwip_netif_waitif(struct netif *nf, netif_nsc_reason_t reason,
+			       const netif_ext_callback_args_t *args)
+{
+	if (0x0
+#if LWIP_IPV4
+	    || (reason & LWIP_NSC_IPV4_SETTINGS_CHANGED)
+	    || (reason & LWIP_NSC_IPV4_ADDRESS_CHANGED)
+#endif /* LWIP_IPV4 */
+#if LWIP_IPV6
+	    || (reason & LWIP_NSC_IPV6_SET)
+	    || (reason & LWIP_NSC_IPV6_ADDR_STATE_CHANGED)
+#endif /* LWIP_IPV6 */
+	    ) {
+		uk_semaphore_up(&_lwip_waitif_sem);
+	}
+}
+
+static int liblwip_waitif(struct uk_init_ctx *ictx __unused)
+{
+#if CONFIG_LWIP_WAITIFACE_TO
+	int lefttime = CONFIG_LWIP_WAITIFACE_TO;
+#endif /* CONFIG_LWIP_WAITIFACE_TO */
+
+	if (lwip_netif_attached == 0)
+		return 0; /* No interface to wait for */
+	if (uk_semaphore_down_try(&_lwip_waitif_sem) > 0)
+		return 0; /* Fast path: at least one netif is already
+			   * configured (probably a static IP) -->
+			   * Do not print, continue booting.
+			   */
+
+	uk_pr_info("Wait for networking...");
+	while (uk_semaphore_down_to(&_lwip_waitif_sem,
+				    ukarch_time_sec_to_nsec(1)) == __NSEC_MAX) {
+#if CONFIG_LWIP_WAITIFACE_TO
+		lefttime--;
+		if (lefttime == 0) {
+#if !LWIP_FAILNOIFACE
+			uk_pr_info("Timed out\n");
+			return 0;
+#else /* LWIP_FAILNOIFACE */
+			uk_pr_crit("Network setup timed out\n");
+			return -ETIMEDOUT;
+#endif  /* LWIP_FAILNOIFACE */
+		}
+#endif /* CONFIG_LWIP_WAITIFACE_TO */
+		uk_pr_info(".");
+	}
+	uk_pr_info("\n");
+	return 0;
+}
+
+uk_late_initcall_prio(liblwip_waitif, 0x0, UK_PRIO_LATEST);
+#endif /* CONFIG_LWIP_WAITIFACE */
