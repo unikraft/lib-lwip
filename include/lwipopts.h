@@ -406,6 +406,7 @@ void sys_free(void *ptr);
 #if CONFIG_LWIP_SERVICE_DEBUG
 #define ETHARP_DEBUG     LWIP_DBG_ON
 #define DNS_DEBUG        LWIP_DBG_ON
+#define NETDB_DEBUG      LWIP_DBG_ON
 #define AUTOIP_DEBUG     LWIP_DBG_ON
 #define DHCP_DEBUG       LWIP_DBG_ON
 #define ICMP_DEBUG       LWIP_DBG_ON
