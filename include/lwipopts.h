@@ -265,6 +265,15 @@ void sys_free(void *ptr);
 #define DNS_TABLE_SIZE CONFIG_LWIP_DNS_TABLE_SIZE
 #define DNS_LOCAL_HOST_LIST 1
 #define DNS_LOCAL_HOSTLIST_IS_DYNAMIC 1
+
+#if CONFIG_LIBMUSL_NETWORK
+/* lwip should not declare its own data types */
+#define LWIP_DNS_API_DECLARE_H_ERRNO  0
+#define LWIP_DNS_API_DEFINE_ERRORS    0
+#define LWIP_DNS_API_DEFINE_FLAGS     0
+#define LWIP_DNS_API_DECLARE_STRUCTS  0
+#include <netdb.h>
+#endif /* CONFIG_LIBMUSL_NETWORK */
 #endif /* LWIP_DNS */
 
 /**
