@@ -214,6 +214,10 @@ void sys_free(void *ptr);
 #define LWIP_SOCKET 0
 #endif
 
+#if CONFIG_LWIP_RCVBUF
+#define LWIP_SO_RCVBUF 1
+#endif
+
 #if LWIP_SOCKET
 #if CONFIG_HAVE_LIBC
 /* Stop lwip to provide ioctl constants */
