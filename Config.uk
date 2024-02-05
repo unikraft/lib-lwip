@@ -182,6 +182,12 @@ config LWIP_NETIF_STATUS_PRINT
 	help
 		Print netif status changes to standard console
 
+config LWIP_RCVBUF
+	bool "Use receive buffers"
+	default y
+	help
+		Use receive buffers, enabling the SO_RCVBUF socket option and FIONREAD ioctl
+
 config LWIP_LOOPBACK
 	bool "Loopback traffic"
 	default y
