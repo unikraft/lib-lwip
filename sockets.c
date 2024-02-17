@@ -223,7 +223,8 @@ lwip_posix_socket_setsockopt(posix_sock *file, int level,
 	UK_ASSERT(lwip_fd >= 0);
 
 	if ((level == LINUX_SOL_TCP && optname == LINUX_TCP_FASTOPEN) ||
-	    (level == SOL_IP && optname == IP_RECVERR)) {
+	    (level == SOL_IP && optname == IP_RECVERR) ||
+	    (level == SOL_SOCKET && optname == SO_LINGER)) {
 		/* Ignore stuff that LWIP doesn't support */
 		return 0;
 	}
