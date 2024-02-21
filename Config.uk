@@ -192,6 +192,13 @@ config LWIP_RCVBUF
 	help
 		Use receive buffers, enabling the SO_RCVBUF socket option and FIONREAD ioctl
 
+config LWIP_LINGER
+	bool "Linger on close()"
+	default y
+	help
+		Enables support of the SO_LINGER socket option that allows delaying close()
+		if data still available in the socket.
+
 config LWIP_LOOPBACK
 	bool "Loopback traffic"
 	default y
