@@ -201,8 +201,8 @@ static void uknetdev_input(struct uk_netdev *dev,
 			   uint16_t queue_id __unused, void *argp)
 {
 	struct netif *nf = (struct netif *) argp;
-	struct uk_netbuf *nb;
-	struct pbuf *p;
+	struct uk_netbuf *nb, *nbi;
+	struct pbuf *p, *pi;
 	err_t err;
 	int ret;
 
@@ -251,6 +251,15 @@ static void uknetdev_input(struct uk_netdev *dev,
 		p = lwip_netbuf_to_pbuf(nb);
 		p->payload = nb->data;
 		p->tot_len = p->len = nb->len;
+		/* Also chain further netbuf segments */
+		nbi = nb->next;
+		while (nbi) {
+			pi = lwip_netbuf_to_pbuf(nbi);
+			pi->payload = nbi->data;
+			pi->tot_len = pi->len = nbi->len;
+			pbuf_cat(p, pi);
+			nbi = nbi->next;
+		}
 		err = nf->input(p, nf);
 		if (unlikely(err != ERR_OK)) {
 #if CONFIG_LWIP_THREADS && CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
@@ -495,6 +504,7 @@ err_t uknetdev_init(struct netif *nf)
 	 */
 	dev_conf.nb_rx_queues = 1;
 	dev_conf.nb_tx_queues = 1;
+	dev_conf.lro = !!(lwip_data->dev_info.features & UK_NETDEV_F_LRO);
 	ret = uk_netdev_configure(dev, &dev_conf);
 	if (ret < 0) {
 		LWIP_DEBUGF(NETIF_DEBUG,
