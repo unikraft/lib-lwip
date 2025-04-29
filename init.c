@@ -467,12 +467,7 @@ dns_done:
 	return 0;
 }
 
-static void liblwip_term(const struct uk_term_ctx *tctx __unused)
-{
-	/* nothing to do */
-}
-
-uk_lib_initcall(liblwip_init, liblwip_term);
+uk_lib_initcall(liblwip_init, 0);
 
 #if CONFIG_LWIP_WAITIFACE
 static void _lwip_netif_waitif(struct netif *nf, netif_nsc_reason_t reason,
