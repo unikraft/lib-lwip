@@ -42,7 +42,9 @@ typedef	u_long	tcp_seq;
  * Per RFC 793, September, 1981.
  */
 
-#ifdef WORKAROUND_NEWLIB
+#include <uk/config.h>
+
+#if ((defined CONFIG_ARCH_X86_64) || (defined CONFIG_ARCH_ARM_64))
 #include <endian.h>
 #endif
 
