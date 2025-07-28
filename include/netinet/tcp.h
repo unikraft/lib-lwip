@@ -41,6 +41,11 @@ typedef	u_long	tcp_seq;
  * TCP header.
  * Per RFC 793, September, 1981.
  */
+
+#ifdef WORKAROUND_NEWLIB
+#include <endian.h>
+#endif
+
 struct tcphdr {
 	u_short	th_sport;		/* source port */
 	u_short	th_dport;		/* destination port */
