@@ -364,6 +364,19 @@ void sys_free(void *ptr);
 #define CHECKSUM_CHECK_ICMP6 1
 #define CHECKSUM_CHECK_TCP   1
 
+/*
+ * As long as partial checksummin gis not upstream available,
+ * enable it only when Unirkaft's fork of lwIP is selected.
+ */
+#if CONFIG_LWIP_UNIKRAFT21X
+#define LWIP_CHECKSUM_PARTIAL 1
+
+#define CHECKSUM_PARTIAL_UDP     1
+#define CHECKSUM_PARTIAL_TCP     1
+#define CHECKSUM_SKIPVALID_UDP   1
+#define CHECKSUM_SKIPVALID_TCP   1
+#endif /* CONFIG_LWIP_UNIKRAFT21X */
+
 /**
  * Debugging options
  */

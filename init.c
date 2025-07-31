@@ -437,6 +437,80 @@ dns_secondary:
 dns_done:
 #endif /* LWIP_IPV4 && LWIP_DNS */
 
+		/* Print hardware address */
+		if (nf->hwaddr_len == 6) {
+			uk_pr_info("%c%c%u: Hardware address: %02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8":%02"PRIx8"\n",
+				   nf->name[0], nf->name[1], nf->num,
+				   nf->hwaddr[0], nf->hwaddr[1], nf->hwaddr[2],
+				   nf->hwaddr[3], nf->hwaddr[4], nf->hwaddr[5]);
+		}
+
+#if LWIP_CHECKSUM_CTRL_PER_NETIF
+		uk_pr_info("%c%c%u: Check checksums:",
+			   nf->name[0], nf->name[1], nf->num);
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_IP) {
+			uk_pr_info(" IP");
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_UDP) {
+			uk_pr_info(" UDP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_UDP) {
+				uk_pr_info("[+partial]");
+			}
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_SKIPVALID_UDP) {
+				uk_pr_info("[+offloaded]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_TCP) {
+			uk_pr_info(" TCP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_TCP) {
+				uk_pr_info("[+partial]");
+			}
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_SKIPVALID_TCP) {
+				uk_pr_info("[+offloaded]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_ICMP) {
+			uk_pr_info(" ICMP");
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_CHECK_ICMP6) {
+			uk_pr_info(" ICMP6");
+		}
+		uk_pr_info("\n");
+
+		uk_pr_info("%c%c%u: Generate checksums:",
+			   nf->name[0], nf->name[1], nf->num);
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_IP) {
+			uk_pr_info(" IP");
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_UDP) {
+			uk_pr_info(" UDP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_UDP) {
+				uk_pr_info("[partial]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_TCP) {
+			uk_pr_info(" TCP");
+#if LWIP_CHECKSUM_PARTIAL
+			IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_PARTIAL_TCP) {
+				uk_pr_info("[partial]");
+			}
+#endif /* LWIP_CHECKSUM_PARTIAL */
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_ICMP) {
+			uk_pr_info(" ICMP");
+		}
+		IF__NETIF_CHECKSUM_ENABLED(nf, NETIF_CHECKSUM_GEN_ICMP6) {
+			uk_pr_info(" ICMP6");
+		}
+		uk_pr_info("\n");
+#endif /* LWIP_CHECKSUM_CTRL_PER_NETIF */
+
 		/* Declare the first network device as default interface */
 		if (is_first_nf) {
 			uk_pr_info("%c%c%u: Set as default interface\n",

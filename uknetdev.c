@@ -164,20 +164,62 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 
 	/*
 	 * Copy pbuf to netbuf
-	 * NOTE: Unfortunately, lwIP seems not to support zero-copy transmit,
-	 *       yet. As long as we do not have this, we have to copy.
+	 * NOTE: Unfortunately, lwIP seems not to support asynchronous zero-copy
+	 *       transmit, yet. As long as we do not have this, we have to copy
+	 *       for being still able to asynchronously transmit. At least this
+	 *       needs to be done for TCP traffic because of potential
+	 *       retransmissions.
+	 *       Further information: https://savannah.nongnu.org/task/?7896
 	 */
+	LWIP_DEBUGF(NETIF_DEBUG,
+		    ("%s: %c%c%u: Prepare netbuf for %"PRIu16" bytes (headroom: %"__PRIsz"):",
+		     __func__, nf->name[0], nf->name[1], nf->num, p->tot_len, uk_netbuf_headroom(nb)));
 	wpos = nb->data;
 	for (q = p; q != NULL; q = q->next) {
 		memcpy(wpos, q->payload, q->len);
+
+#if LWIP_CHECKSUM_CTRL_PER_NETIF && LWIP_CHECKSUM_PARTIAL
+#if (NETIF_DEBUG == LWIP_DBG_ON)
+		LWIP_DEBUGF(NETIF_DEBUG,
+			    (" [%"U16_F"B %c%c",
+			     q->len,
+			     q->flags & PBUF_FLAG_CSUM_PARTIAL ? 'C' : '-',
+			     q->flags & PBUF_FLAG_DATA_VALID ?   'V' : '-'));
+		if (q->flags & PBUF_FLAG_CSUM_PARTIAL) {
+			LWIP_DEBUGF(NETIF_DEBUG,
+				    (" chksum @ %"S32_F":%"U16_F,
+				     q->csum_start, q->csum_offset));
+		}
+		LWIP_DEBUGF(NETIF_DEBUG, ("]"));
+#endif /* (NETIF_DEBUG == LWIP_DBG_ON) */
+		/*
+		 * One pbuf of the chain (typically the first one)
+		 * could have the CSUM_PARTIAL flag set
+		 */
+		if (q->flags & PBUF_FLAG_CSUM_PARTIAL) {
+			/* checksum bit can only be set once */
+			UK_ASSERT(!(nb->flags & UK_NETBUF_F_PARTIAL_CSUM));
+
+			nb->flags |= (UK_NETBUF_F_PARTIAL_CSUM);
+			nb->csum_start = p->csum_start + nb->len;
+			nb->csum_offset = p->csum_offset;
+		}
+		nb->flags |= (q->flags & PBUF_FLAG_DATA_VALID) ? UK_NETBUF_F_DATA_VALID : 0x0;
+#endif /* LWIP_CHECKSUM_CTRL_PER_NETIF && LWIP_CHECKSUM_PARTIAL */
+
 		wpos += q->len;
+		nb->len += q->len;
 	}
-	nb->len = p->tot_len;
+	LWIP_DEBUGF(NETIF_DEBUG, ("\n"));
+	UK_ASSERT(nb->len == p->tot_len);
 
 	/* Transmit packet */
-	do {
+	ret = uk_netdev_tx_one(dev, 0, nb);
+	while (unlikely(uk_netdev_status_notready(ret))) {
+		/* Allow other threads to do work and re-try */
+		uk_sched_yield();
 		ret = uk_netdev_tx_one(dev, 0, nb);
-	} while (uk_netdev_status_notready(ret));
+	}
 	if (unlikely(ret < 0)) {
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
@@ -242,15 +284,48 @@ static void uknetdev_input(struct uk_netdev *dev,
 			break;
 		}
 
-		LWIP_DEBUGF(NETIF_DEBUG,
-			    ("%s: %c%c%u: Received %"PRIu16" bytes\n",
-			     __func__, nf->name[0], nf->name[1], nf->num,
-			     nb->len));
-
 		/* Send packet to lwip */
 		p = lwip_netbuf_to_pbuf(nb);
 		p->payload = nb->data;
 		p->tot_len = p->len = nb->len;
+#if LWIP_CHECKSUM_CTRL_PER_NETIF && LWIP_CHECKSUM_PARTIAL
+		/* NOTE: We need to be careful that we do not erase any existing
+		 *       pbuf flags here. The receive queue was filled with
+		 *       netbufs allocated by `lwip_alloc_netbuf()`. This
+		 *       function sets `PBUF_FLAG_IS_CUSTOM` so that lwIP can
+		 *       properly free the encapsulated pbufs.
+		 */
+		UK_ASSERT((p->flags & PBUF_FLAG_IS_CUSTOM) != 0);
+
+		p->flags |= (nb->flags & UK_NETBUF_F_PARTIAL_CSUM)
+			? PBUF_FLAG_CSUM_PARTIAL : 0;
+		p->flags |= (nb->flags & UK_NETBUF_F_DATA_VALID)
+			? PBUF_FLAG_DATA_VALID :   0;
+
+		p->csum_start  = (s32_t) nb->csum_start;
+		p->csum_offset = nb->csum_offset;
+
+#if (NETIF_DEBUG == LWIP_DBG_ON)
+		LWIP_DEBUGF(NETIF_DEBUG,
+			    ("%s: %c%c%u: Received %"PRIu16" bytes: [%uB %c%c",
+			     __func__, nf->name[0], nf->name[1], nf->num,
+			     p->tot_len, p->len,
+			     (p->flags & PBUF_FLAG_CSUM_PARTIAL) ? 'C' : '-',
+			     (p->flags & PBUF_FLAG_DATA_VALID)   ? 'V' : '-'));
+		if (p->flags & PBUF_FLAG_CSUM_PARTIAL) {
+			LWIP_DEBUGF(NETIF_DEBUG,
+				    (" chksum @ %"S32_F":%"U16_F,
+				     p->csum_start, p->csum_offset));
+		}
+		LWIP_DEBUGF(NETIF_DEBUG, ("]\n"));
+#endif /* (NETIF_DEBUG == LWIP_DBG_ON) */
+#else /* !(LWIP_CHECKSUM_CTRL_PER_NETIF && LWIP_CHECKSUM_PARTIAL) */
+		LWIP_DEBUGF(NETIF_DEBUG,
+			    ("%s: %c%c%u: Received %"PRIu16" bytes\n",
+			     __func__, nf->name[0], nf->name[1], nf->num,
+			     nb->len));
+#endif /* !(LWIP_CHECKSUM_CTRL_PER_NETIF && LWIP_CHECKSUM_PARTIAL) */
+
 		err = nf->input(p, nf);
 		if (unlikely(err != ERR_OK)) {
 #if CONFIG_LWIP_THREADS && CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
@@ -350,7 +425,6 @@ static void uknetdev_updown(struct netif *nf)
 	lwip_data = (struct lwip_netdev_data *)dev->scratch_pad;
 
 	/* Enable and disable interrupts according to netif's up/down status */
-
 	if (nf->flags & NETIF_FLAG_UP) {
 		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
 			ret = uk_netdev_rxq_intr_enable(dev, 0);
@@ -580,24 +654,64 @@ err_t uknetdev_init(struct netif *nf)
 		     __func__, nf->name[0], nf->name[1], nf->num, nf->flags));
 
 #if LWIP_CHECKSUM_CTRL_PER_NETIF
+#if LWIP_CHECKSUM_PARTIAL
+	if (uk_netdev_partial_csum_supported(lwip_data->dev_info.features)) {
+		/*
+		 * Do partial checksumming for UDP and TCP
+		 */
+		NETIF_SET_CHECKSUM_CTRL(nf, (NETIF_CHECKSUM_GEN_IP
+					     | NETIF_CHECKSUM_CHECK_IP
+					     | NETIF_CHECKSUM_GEN_UDP
+					     | NETIF_CHECKSUM_PARTIAL_UDP
+					     | NETIF_CHECKSUM_CHECK_UDP
+					     | NETIF_CHECKSUM_SKIPVALID_UDP
+					     | NETIF_CHECKSUM_GEN_TCP
+					     | NETIF_CHECKSUM_PARTIAL_TCP
+					     | NETIF_CHECKSUM_CHECK_TCP
+					     | NETIF_CHECKSUM_SKIPVALID_TCP
+					     | NETIF_CHECKSUM_GEN_ICMP
+					     | NETIF_CHECKSUM_CHECK_ICMP
+					     | NETIF_CHECKSUM_GEN_ICMP6
+					     | NETIF_CHECKSUM_CHECK_ICMP6));
+	} else {
+		/*
+		 * Do complete checksumming of outgoing packets
+		 * and check everything incoming
+		 */
+		NETIF_SET_CHECKSUM_CTRL(nf, (NETIF_CHECKSUM_GEN_IP
+					     | NETIF_CHECKSUM_GEN_UDP
+					     | NETIF_CHECKSUM_GEN_TCP
+					     | NETIF_CHECKSUM_GEN_ICMP
+					     | NETIF_CHECKSUM_GEN_ICMP6
+					     | NETIF_CHECKSUM_CHECK_IP
+					     | NETIF_CHECKSUM_CHECK_UDP
+					     | NETIF_CHECKSUM_CHECK_TCP
+					     | NETIF_CHECKSUM_CHECK_ICMP
+					     | NETIF_CHECKSUM_CHECK_ICMP6));
+	}
+#else /* !LWIP_CHECKSUM_PARTIAL */
 	/*
 	 * Checksum settings
-	 * TODO: libuknetdev does not support checksum capabilities yet.
-	 *       Because of this, we need to calculate the checksum for every
-	 *       outgoing packet in software. We assume that we receive packets
-	 *       from a virtual interface, so the host was doing a check for us
-	 *       already. In case of guest-to-guest communication, the checksum
-	 *       field may be incorrect because the other guest expects that the
-	 *       host is offloading the calculation to hardware as soon as a
-	 *       packet leaves the physical host machine. At this point, the
-	 *       best we can do is not to check any checksums on incoming
-	 *       traffic and assume everything is fine.
+	 * NOTE: We assume that we receive packets from a virtual interface,
+	 *       the host should have done a check for us already. We will not
+	 *       check checksum on incoming packets. The reason is that in
+	 *       case of guest-to-guest communication, the checksum field may be
+	 *       different compared when received from a physical network. The
+	 *       reason is that in virtual environments typically the host is
+	 *       offloading the calculation to hardware as soon as a
+	 *       packet leaves the physical host machine, otherwise the field
+	 *       stays untouched (e.g., guest-to-guest communication). At this
+	 *       point, the best we can do with lwIP is not to check any
+	 *       checksums on incoming traffic and compute one for outgoing
+	 *       traffic.
 	 */
 	NETIF_SET_CHECKSUM_CTRL(nf, (NETIF_CHECKSUM_GEN_IP
 				     | NETIF_CHECKSUM_GEN_UDP
 				     | NETIF_CHECKSUM_GEN_TCP
 				     | NETIF_CHECKSUM_GEN_ICMP
-				     | NETIF_CHECKSUM_GEN_ICMP6));
+				     | NETIF_CHECKSUM_GEN_ICMP6
+				     | NETIF_CHECKSUM_CHECK_IP));
+#endif /* !LWIP_CHECKSUM_PARTIAL */
 	LWIP_DEBUGF(NETIF_DEBUG,
 		    ("%s: %c%c%u: chksum_flags: %"PRIx16"\n",
 		     __func__, nf->name[0], nf->name[1], nf->num,

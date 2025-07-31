@@ -42,6 +42,7 @@ config LWIP_UNIKRAFT21X
 		recent bugfixes and security patches, and includes
 		latest features developed by the Unikraft community
 		that are currently upstreamed to lwIP.
+		This version supports checksum offloading.
 endchoice
 
 menu "Netif drivers"
