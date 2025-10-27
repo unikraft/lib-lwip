@@ -59,10 +59,14 @@
 #define ETH_PAD_SIZE 0
 
 /* rand */
-#define LWIP_RAND() ({				\
-	__u32 x;				\
-	uk_random_fill_buffer(&x, sizeof(x));	\
-	x;					\
+#define LWIP_RAND() ({						\
+	int res;						\
+	__u32 x;						\
+	res = uk_random_fill_buffer(&x, sizeof(x));		\
+	if (unlikely(res))					\
+		UK_CRASH("Could not obtain randomness (%d)",	\
+			 res);					\
+	x;							\
 })
 
 /* compiler hints for packing lwip's structures */
