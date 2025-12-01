@@ -113,6 +113,7 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_TCP) += $(LIBLWIP_EXTRACTED)/core/tcp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_TCP) += $(LIBLWIP_EXTRACTED)/core/tcp_in.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_TCP) += $(LIBLWIP_EXTRACTED)/core/tcp_out.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_UDP) += $(LIBLWIP_EXTRACTED)/core/udp.c
+LIBLWIP_SRCS-$(CONFIG_LIBPOSIX_NETLINK) += $(LIBLWIP_BASE)/netlink.c|unikraft
 
 ################################################################################
 # APIs
