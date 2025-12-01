@@ -4,6 +4,7 @@ menuconfig LIBLWIP
 	select LIBNOLIBC if !HAVE_LIBC
 	select LIBUKDEBUG
 	select LIBUKRANDOM
+	select LIBUKBITOPS if LIBPOSIX_NETLINK
 	select HAVE_NW_STACK
 
 if LIBLWIP
