@@ -32,8 +32,8 @@
 #define __LWIP_ARCH_CC_H__
 
 #include <uk/arch/types.h>
-#include <uk/plat/lcpu.h>
 #include <uk/print.h>
+#include <uk/lcpu.h>
 #include <uk/assert.h>
 #include <uk/random.h>
 #include <errno.h>
@@ -91,9 +91,9 @@
 	unsigned long (_x)
 
 #define SYS_ARCH_PROTECT(_x) \
-	({ (_x) = ukplat_lcpu_save_irqf(); })
+	({ (_x) = uk_lcpu_save_irqf(); })
 
 #define SYS_ARCH_UNPROTECT(_x) \
-	ukplat_lcpu_restore_irqf((_x))
+	uk_lcpu_restore_irqf((_x))
 
 #endif /* __LWIP_ARCH_CC_H__ */
