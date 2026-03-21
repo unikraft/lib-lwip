@@ -267,6 +267,17 @@ config LWIP_NUM_TCPCON
 config LWIP_NUM_TCPLISTENERS
 	int "Maximum number of simultaneous TCP listeners"
 	default 64
+
+config LWIP_TCP_MSL
+	int "Maximum segment lifetime (ms)"
+	default 60000
+	help
+	  The maximum segment lifetime in milliseconds, used to determine
+	  the TIME_WAIT timeout (2 * TCP_MSL). Connections remain in
+	  TIME_WAIT state for this duration after closing, consuming
+	  resources. Lower values allow faster connection recycling at the
+	  cost of potential duplicate packet issues. Default is 60000 (60s),
+	  resulting in a 120s TIME_WAIT.
 endif
 
 config LWIP_ICMP
