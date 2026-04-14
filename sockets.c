@@ -60,6 +60,9 @@ lwip_socket_apply_flags(int lwip_fd, int flags)
 {
 	int val = 1;
 
+	/* Set FIONBIO unconditionally, as posix-socket handles blocking
+	 * internally and expects lwip sockets to be always non-blocking.
+	 */
 	val = lwip_ioctl(lwip_fd, FIONBIO, &val);
 	if (unlikely(val < 0)) {
 		return -errno;
@@ -77,8 +80,7 @@ lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 	int lwip_fd;
 	int flags, rc;
 
-	/* Blocking is handled by posix-socket */
-	flags = (type & SOCK_FLAGS) | SOCK_NONBLOCK;
+	flags = type & SOCK_FLAGS;
 	type = type & ~SOCK_FLAGS;
 
 	lwip_fd = lwip_socket(family, type, protocol);
@@ -109,7 +111,6 @@ lwip_posix_socket_accept4(posix_sock *file,
 	if (unlikely(new_fd < 0))
 		return ERR2PTR(-errno);
 
-	flags |= SOCK_NONBLOCK; /* Blocking is handled by posix-socket */
 	rc = lwip_socket_apply_flags(new_fd, flags);
 	if (unlikely(rc)) {
 		(void)lwip_close(new_fd);
