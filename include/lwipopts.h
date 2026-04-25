@@ -162,6 +162,7 @@ void sys_free(void *ptr);
 
 #if LWIP_TCP
 #define TCP_MSS CONFIG_LWIP_TCP_MSS
+#define TCP_MSL ((u32_t)CONFIG_LWIP_TCP_MSL)
 #define TCP_CALCULATE_EFF_SEND_MSS 1
 #define IP_FRAG 0
 
