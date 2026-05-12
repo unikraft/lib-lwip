@@ -342,7 +342,7 @@ static int reply_getaddr_if(struct nl_ctx *ctx, struct netif *netif,
 
 #if LWIP_IPV6
 	/* With dual-stack, addresses get a type */
-	if (netif->address.type != IPADDR_TYPE_V4)
+	if (!IP_IS_V4(&netif->ip_addr))
 		return 0; /* no IPv4 address */
 #endif /* LWIP_IPV6 */
 
