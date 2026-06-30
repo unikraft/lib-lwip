@@ -1,0 +1,36 @@
+diff --git a/src/api/netdb.c b/src/api/netdb.c
+index 73028c8e..7af67521 100644
+--- a/src/api/netdb.c
++++ b/src/api/netdb.c
+@@ -57,11 +57,6 @@ struct gethostbyname_r_helper {
+   char *aliases;
+ };
+ 
+-/** h_errno is exported in netdb.h for access by applications. */
+-#if LWIP_DNS_API_DECLARE_H_ERRNO
+-int h_errno;
+-#endif /* LWIP_DNS_API_DECLARE_H_ERRNO */
+-
+ /** LWIP_DNS_API_HOSTENT_STORAGE: if set to 0 (default), lwip_gethostbyname()
+  * returns the same global variable for all calls (in all threads).
+  * When set to 1, your port should provide a function
+@@ -383,9 +378,6 @@ lwip_getaddrinfo(const char *nodename, const char *servname,
+     /* set up sockaddr */
+     inet6_addr_from_ip6addr(&sa6->sin6_addr, ip_2_ip6(&addr));
+     sa6->sin6_family = AF_INET6;
+-#if LWIP_SOCKET_HAVE_SA_LEN
+-    sa6->sin6_len = sizeof(struct sockaddr_in6);
+-#endif /* LWIP_SOCKET_HAVE_SA_LEN */
+     sa6->sin6_port = lwip_htons((u16_t)port_nr);
+     sa6->sin6_scope_id = ip6_addr_zone(ip_2_ip6(&addr));
+     ai->ai_family = AF_INET6;
+@@ -396,9 +388,6 @@ lwip_getaddrinfo(const char *nodename, const char *servname,
+     /* set up sockaddr */
+     inet_addr_from_ip4addr(&sa4->sin_addr, ip_2_ip4(&addr));
+     sa4->sin_family = AF_INET;
+-#if LWIP_SOCKET_HAVE_SA_LEN
+-    sa4->sin_len = sizeof(struct sockaddr_in);
+-#endif /* LWIP_SOCKET_HAVE_SA_LEN */
+     sa4->sin_port = lwip_htons((u16_t)port_nr);
+     ai->ai_family = AF_INET;
+ #endif /* LWIP_IPV4 */
