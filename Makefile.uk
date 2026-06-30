@@ -154,6 +154,9 @@ LIBLWIP_SRCS-$(CONFIG_LWIP_IPV4)    += $(LIBLWIP_EXTRACTED)/core/ipv4/ip4_addr.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_ICMP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/icmp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_IGMP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/igmp.c
 LIBLWIP_SRCS-$(CONFIG_LWIP_DHCP)    += $(LIBLWIP_EXTRACTED)/core/ipv4/dhcp.c
+ifeq ($(CONFIG_LWIP_RELEASE221),y)
+LIBLWIP_SRCS-$(CONFIG_LWIP_DHCP)   += $(LIBLWIP_EXTRACTED)/core/ipv4/acd.c
+endif
 
 ################################################################################
 # IPv6
