@@ -1,0 +1,53 @@
+diff --git a/src/api/sockets.c b/src/api/sockets.c
+index 800926d2..3c0c5145 100644
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -65,6 +65,8 @@
+ #endif
+ 
+ #include <string.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
+ 
+ #ifdef LWIP_HOOK_FILENAME
+ #include LWIP_HOOK_FILENAME
+@@ -132,6 +134,7 @@
+ #endif /* LWIP_SOCKET_HAVE_SA_LEN */
+ 
+ #if LWIP_IPV4
++#define SIN_ZERO_LEN 8
+ #define IP4ADDR_PORT_TO_SOCKADDR(sin, ipaddr, port) do { \
+       IP4ADDR_SOCKADDR_SET_LEN(sin); \
+       (sin)->sin_family = AF_INET; \
+@@ -719,9 +722,6 @@ lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+     }
+ 
+     IPADDR_PORT_TO_SOCKADDR(&tempaddr, &naddr, port);
+-    if (*addrlen > IPADDR_SOCKADDR_GET_LEN(&tempaddr)) {
+-      *addrlen = IPADDR_SOCKADDR_GET_LEN(&tempaddr);
+-    }
+     MEMCPY(addr, &tempaddr, *addrlen);
+   }
+ 
+@@ -1085,11 +1085,6 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
+ #endif /* LWIP_IPV4 && LWIP_IPV6 */
+ 
+   IPADDR_PORT_TO_SOCKADDR(&saddr, fromaddr, port);
+-  if (*fromlen < IPADDR_SOCKADDR_GET_LEN(&saddr)) {
+-    truncated = 1;
+-  } else if (*fromlen > IPADDR_SOCKADDR_GET_LEN(&saddr)) {
+-    *fromlen = IPADDR_SOCKADDR_GET_LEN(&saddr);
+-  }
+   MEMCPY(from, &saddr, *fromlen);
+   return truncated;
+ }
+@@ -2786,9 +2781,6 @@ lwip_getaddrname(int s, struct sockaddr *name, socklen_t *namelen, u8_t local)
+   ip_addr_debug_print_val(SOCKETS_DEBUG, naddr);
+   LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F")\n", port));
+ 
+-  if (*namelen > IPADDR_SOCKADDR_GET_LEN(&saddr)) {
+-    *namelen = IPADDR_SOCKADDR_GET_LEN(&saddr);
+-  }
+   MEMCPY(name, &saddr, *namelen);
+ 
+   set_errno(0);

@@ -1,0 +1,36 @@
+diff --git a/src/api/sockets.c b/src/api/sockets.c
+index 3c0c5145..a5d70ba6 100644
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -722,6 +722,9 @@ lwip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
+     }
+ 
+     IPADDR_PORT_TO_SOCKADDR(&tempaddr, &naddr, port);
++    if (*addrlen > sizeof(*addr)) {
++      *addrlen = sizeof(*addr);
++    }
+     MEMCPY(addr, &tempaddr, *addrlen);
+   }
+ 
+@@ -1085,6 +1088,11 @@ lwip_sock_make_addr(struct netconn *conn, ip_addr_t *fromaddr, u16_t port,
+ #endif /* LWIP_IPV4 && LWIP_IPV6 */
+ 
+   IPADDR_PORT_TO_SOCKADDR(&saddr, fromaddr, port);
++  if (*fromlen < sizeof(*from)) {
++    truncated = 1;
++  } else {
++    *fromlen = sizeof(*from);
++  }
+   MEMCPY(from, &saddr, *fromlen);
+   return truncated;
+ }
+@@ -2781,6 +2789,9 @@ lwip_getaddrname(int s, struct sockaddr *name, socklen_t *namelen, u8_t local)
+   ip_addr_debug_print_val(SOCKETS_DEBUG, naddr);
+   LWIP_DEBUGF(SOCKETS_DEBUG, (" port=%"U16_F")\n", port));
+ 
++  if (*namelen > sizeof(*name)) {
++    *namelen = sizeof(*name);
++  }
+   MEMCPY(name, &saddr, *namelen);
+ 
+   set_errno(0);
