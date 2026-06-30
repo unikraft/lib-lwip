@@ -41,7 +41,12 @@ $(eval $(call addlib_s,liblwip,$(CONFIG_LIBLWIP)))
 ################################################################################
 # Sources
 ################################################################################
-ifeq ($(CONFIG_LWIP_UNIKRAFT21X),y)
+ifeq ($(CONFIG_LWIP_RELEASE221),y)
+LIBLWIP_TAG=STABLE-2_2_1_RELEASE
+LIBLWIP_ZIPNAME=fork-lwip-$(LIBLWIP_TAG)
+LIBLWIP_URL=https://github.com/unikraft/fork-lwip/archive/refs/tags/$(LIBLWIP_TAG).zip
+LIBLWIP_ORIGIN_SHA256=b1101f5024ba39bea212fad013db36927aae3a00952ed96704b12eccc806fa83
+else ifeq ($(CONFIG_LWIP_UNIKRAFT21X),y)
 LIBLWIP_BRANCH=UNIKRAFT-2_1_x
 LIBLWIP_ZIPNAME=fork-lwip-$(LIBLWIP_BRANCH)
 LIBLWIP_URL=https://github.com/unikraft/fork-lwip/archive/refs/heads/$(LIBLWIP_BRANCH).zip
@@ -56,7 +61,11 @@ LIBLWIP_URL=https://github.com/unikraft/fork-lwip/archive/refs/tags/$(LIBLWIP_TA
 LIBLWIP_ORIGIN_SHA256=8f0ae46e2702720ce852b00de5d304adb2809b0203741f299876594bb8be7890
 endif
 
-LIBLWIP_PATCHDIR=$(LIBLWIP_BASE)/patches
+ifeq ($(CONFIG_LWIP_RELEASE221),y)
+LIBLWIP_PATCHDIR=$(LIBLWIP_BASE)/patches/2.2.1
+else
+LIBLWIP_PATCHDIR=$(LIBLWIP_BASE)/patches/2.1.x
+endif
 $(eval $(call fetch,liblwip,$(LIBLWIP_URL)))
 $(eval $(call patch,liblwip,$(LIBLWIP_PATCHDIR),$(LIBLWIP_ZIPNAME)))
 

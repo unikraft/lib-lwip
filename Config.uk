@@ -10,7 +10,7 @@ menuconfig LIBLWIP
 if LIBLWIP
 choice
 	prompt "Version"
-	default LWIP_UNIKRAFT21X
+	default LWIP_RELEASE221
 	help
 		Select the version of the upstream lwIP stack
 		sources that will be downloaded.
@@ -19,6 +19,11 @@ choice
 
 config LWIP_RELEASE212
 	bool "Release 2.1.2"
+	help
+		An official release from the lwIP community.
+
+config LWIP_RELEASE221
+	bool "Release 2.2.1"
 	help
 		An official release from the lwIP community.
 
