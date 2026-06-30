@@ -14,7 +14,7 @@ index a777d87c..fd463f3b 100644
  #include "lwip/opt.h"
  
  #if LWIP_SOCKET /* don't build if not configured for use in lwipopts.h */
-@@ -49,270 +54,10 @@
+@@ -49,270 +54,12 @@
  #include LWIP_SOCKET_EXTERNAL_HEADER_SOCKETS_H
  #else /* LWIP_SOCKET_EXTERNAL_HEADERS */
  
@@ -30,6 +30,8 @@ index a777d87c..fd463f3b 100644
  extern "C" {
  #endif
  
++typedef int msg_iovlen_t;
++
 -/* sockaddr and pals include length fields */
 -#define LWIP_SOCKET_HAVE_SA_LEN  1
 -
