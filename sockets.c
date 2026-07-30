@@ -477,7 +477,11 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 		return;
 
 	sockobj = (posix_sock *)sock->sock_data;
+#if CONFIG_LWIP_RELEASE221
+	UK_ASSERT(_lwip_getfd(sockobj) == sock->conn->callback_arg.socket);
+#else
 	UK_ASSERT(_lwip_getfd(sockobj) == sock->conn->socket);
+#endif
 
 	events = get_lwip_socket_events(sock);
 	posix_sock_event_assign(sockobj, events);
