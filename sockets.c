@@ -370,16 +370,12 @@ get_lwip_socket_events(struct lwip_sock *sock)
 	UK_ASSERT(sock);
 
 	if ((NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP)) {
-		/* A TCP connection may be in not-connected state. Don't report it as
-		 * readable or writeable.
+		/* The receive side is shut (EOF read or SHUT_RD). A read
+		 * does not wait, so the socket is readable.
 		 */
 		if ((sock->conn->state == NETCONN_NONE) &&
-		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn))) {
-			if (sock->errevent != 0)
-				events |= EPOLLERR;
-
-			return events;
-		}
+		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn)))
+			events |= EPOLLIN | EPOLLRDNORM | EPOLLRDHUP;
 
                 /* Check whether the TCP connection is in CLOSE_WAIT (= got a
                  * FIN packet). In that case the peer will not sent more data
@@ -389,6 +385,9 @@ get_lwip_socket_events(struct lwip_sock *sock)
                 if (sock->conn->pcb.tcp == NULL ||
 		    sock->conn->pcb.tcp->state == CLOSE_WAIT)
 			events |= EPOLLRDHUP;
+
+		if (sock->conn->pcb.tcp == NULL)
+			events |= EPOLLHUP;
 	}
 
 	if (sock->lastdata.pbuf || sock->rcvevent > 0)
