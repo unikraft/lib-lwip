@@ -48,6 +48,22 @@
 #include <lwip/tcp.h>
 #include <lwip/tcpbase.h>
 
+/* Call an lwip function and keep the errno of the caller. On failure,
+ * return -errno, or -EIO if lwip did not set a valid errno.
+ */
+#define LWIP_ERR(func, ...)						\
+	({								\
+		ssize_t __rc;						\
+		int __err = errno;					\
+									\
+		errno = 0;						\
+		__rc = func(__VA_ARGS__);				\
+		if (unlikely(__rc < 0))					\
+			__rc = errno > 0 ? -errno : -EIO;		\
+		errno = __err;						\
+		__rc;							\
+	})
+
 static inline
 int _lwip_ignore_noncrit_msgflags(int flags)
 {
@@ -68,10 +84,9 @@ lwip_socket_apply_flags(int lwip_fd, int flags)
 	/* Set FIONBIO unconditionally, as posix-socket handles blocking
 	 * internally and expects lwip sockets to be always non-blocking.
 	 */
-	val = lwip_ioctl(lwip_fd, FIONBIO, &val);
-	if (unlikely(val < 0)) {
-		return -errno;
-	}
+	val = LWIP_ERR(lwip_ioctl, lwip_fd, FIONBIO, &val);
+	if (unlikely(val < 0))
+		return val;
 
 	/* Ignore SOCK_CLOEXEC */
 
@@ -88,13 +103,13 @@ lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 	flags = type & SOCK_FLAGS;
 	type = type & ~SOCK_FLAGS;
 
-	lwip_fd = lwip_socket(family, type, protocol);
+	lwip_fd = LWIP_ERR(lwip_socket, family, type, protocol);
 	if (unlikely(lwip_fd < 0))
-		return ERR2PTR(-errno);
+		return ERR2PTR(lwip_fd);
 
 	rc = lwip_socket_apply_flags(lwip_fd, flags);
 	if (unlikely(rc)) {
-		(void)lwip_close(lwip_fd);
+		(void)LWIP_ERR(lwip_close, lwip_fd);
 		return ERR2PTR(rc);
 	}
 
@@ -112,13 +127,13 @@ lwip_posix_socket_accept4(posix_sock *file,
 	listen_fd = _lwip_getfd(file);
 	UK_ASSERT(listen_fd >= 0);
 
-	new_fd = lwip_accept(listen_fd, addr, addr_len);
+	new_fd = LWIP_ERR(lwip_accept, listen_fd, addr, addr_len);
 	if (unlikely(new_fd < 0))
-		return ERR2PTR(-errno);
+		return ERR2PTR(new_fd);
 
 	rc = lwip_socket_apply_flags(new_fd, flags);
 	if (unlikely(rc)) {
-		(void)lwip_close(new_fd);
+		(void)LWIP_ERR(lwip_close, new_fd);
 		return ERR2PTR(rc);
 	}
 
@@ -131,32 +146,22 @@ lwip_posix_socket_bind(posix_sock *file,
 		       socklen_t addr_len)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_bind(lwip_fd, addr, addr_len);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_bind, lwip_fd, addr, addr_len);
 }
 
 static int
 lwip_posix_socket_shutdown(posix_sock *file, int how)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_shutdown(lwip_fd, how);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_shutdown, lwip_fd, how);
 }
 
 static int
@@ -165,16 +170,11 @@ lwip_posix_socket_getpeername(posix_sock *file,
 			      socklen_t *restrict addr_len)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_getpeername(lwip_fd, addr, addr_len);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_getpeername, lwip_fd, addr, addr_len);
 }
 
 static int
@@ -183,16 +183,11 @@ lwip_posix_socket_getsockname(posix_sock *file,
 			      socklen_t *restrict addr_len)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_getsockname(lwip_fd, addr, addr_len);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_getsockname, lwip_fd, addr, addr_len);
 }
 
 static int
@@ -201,16 +196,12 @@ lwip_posix_socket_getsockopt(posix_sock *file, int level,
 			     socklen_t *restrict optlen)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_getsockopt(lwip_fd, level, optname, optval, optlen);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_getsockopt, lwip_fd, level, optname, optval,
+			optlen);
 }
 
 #define LINUX_SOL_TCP 6
@@ -221,7 +212,6 @@ lwip_posix_socket_setsockopt(posix_sock *file, int level,
 			     int optname, const void *optval, socklen_t optlen)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
@@ -231,11 +221,8 @@ lwip_posix_socket_setsockopt(posix_sock *file, int level,
 		/* Ignore stuff that LWIP doesn't support */
 		return 0;
 	}
-	ret = lwip_setsockopt(lwip_fd, level, optname, optval, optlen);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_setsockopt, lwip_fd, level, optname, optval,
+			optlen);
 }
 
 static int
@@ -243,32 +230,22 @@ lwip_posix_socket_connect(posix_sock *file,
 			  const struct sockaddr *addr, socklen_t addr_len)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_connect(lwip_fd, addr, addr_len);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_connect, lwip_fd, addr, addr_len);
 }
 
 static int
 lwip_posix_socket_listen(posix_sock *file, int backlog)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_listen(lwip_fd, backlog);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_listen, lwip_fd, backlog);
 }
 
 static ssize_t
@@ -277,18 +254,13 @@ lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 			   socklen_t *restrict fromlen)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_recvfrom(lwip_fd, buf, len, flags, from, fromlen);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_recvfrom, lwip_fd, buf, len, flags, from, fromlen);
 }
 
 static ssize_t
@@ -296,18 +268,13 @@ lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 			  int flags)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_recvmsg(lwip_fd, msg, flags);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_recvmsg, lwip_fd, msg, flags);
 }
 
 static ssize_t
@@ -315,17 +282,12 @@ lwip_posix_socket_sendmsg(posix_sock *file,
 			  const struct msghdr *msg, int flags)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
-	ret = lwip_sendmsg(lwip_fd, msg, flags);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_sendmsg, lwip_fd, msg, flags);
 }
 
 static ssize_t
@@ -335,19 +297,14 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			 socklen_t addrlen)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_sendto(lwip_fd, buf, len, flags,
-			  dest_addr, addrlen);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_sendto, lwip_fd, buf, len, flags, dest_addr,
+			addrlen);
 }
 
 static ssize_t
@@ -355,16 +312,11 @@ lwip_posix_socket_read(posix_sock *file, const struct iovec *iov,
 		       size_t iovcnt)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_readv(lwip_fd, iov, iovcnt);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_readv, lwip_fd, iov, iovcnt);
 }
 
 static ssize_t
@@ -372,48 +324,33 @@ lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 			size_t iovcnt)
 {
 	int lwip_fd;
-	ssize_t ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_writev(lwip_fd, iov, iovcnt);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_writev, lwip_fd, iov, iovcnt);
 }
 
 static int
 lwip_posix_socket_close(posix_sock *file)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_close(lwip_fd);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_close, lwip_fd);
 }
 
 static int
 lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 {
 	int lwip_fd;
-	int ret;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
-	ret = lwip_ioctl(lwip_fd, request, argp);
-	if (unlikely(ret < 0))
-		ret = -errno;
-
-	return ret;
+	return LWIP_ERR(lwip_ioctl, lwip_fd, request, argp);
 }
 
 #if LWIP_NETCONN_FULLDUPLEX
