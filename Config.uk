@@ -344,6 +344,14 @@ if LWIP_SOCKET
 		help
 			How many times should the TCP recvmbox be bigger than the LWIP stackthread mbox size.
 			Default 2, maximum 5.
+
+	config LWIP_TEST
+		bool "Enable unit tests"
+		depends on LWIP_TCP && LWIP_LOOPIF && LWIP_IPV4
+		select LIBUKTEST
+		select LIBPOSIX_POLL
+		help
+			The tests use IPv4 TCP sockets on the loop interface.
 endif
 
 menuconfig LWIP_DEBUG
