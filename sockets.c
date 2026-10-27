@@ -278,15 +278,18 @@ lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 {
 	int lwip_fd;
 	ssize_t ret;
+	int err;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
+	err = errno;
 	ret = lwip_recvfrom(lwip_fd, buf, len, flags, from, fromlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	errno = err;
 
 	return ret;
 }
@@ -297,15 +300,18 @@ lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 {
 	int lwip_fd;
 	ssize_t ret;
+	int err;
 
 	flags = _lwip_ignore_noncrit_msgflags(flags);
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
+	err = errno;
 	ret = lwip_recvmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	errno = err;
 
 	return ret;
 }
@@ -356,13 +362,16 @@ lwip_posix_socket_read(posix_sock *file, const struct iovec *iov,
 {
 	int lwip_fd;
 	ssize_t ret;
+	int err;
 
 	lwip_fd = _lwip_getfd(file);
 	UK_ASSERT(lwip_fd >= 0);
 
+	err = errno;
 	ret = lwip_readv(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	errno = err;
 
 	return ret;
 }
@@ -433,16 +442,9 @@ get_lwip_socket_events(struct lwip_sock *sock)
 	UK_ASSERT(sock);
 
 	if ((NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP)) {
-		/* A TCP connection may be in not-connected state. Don't report it as
-		 * readable or writeable.
-		 */
 		if ((sock->conn->state == NETCONN_NONE) &&
-		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn))) {
-			if (sock->errevent != 0)
-				events |= EPOLLERR;
-
-			return events;
-		}
+		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn)))
+			events |= EPOLLIN | EPOLLRDNORM | EPOLLRDHUP;
 
                 /* Check whether the TCP connection is in CLOSE_WAIT (= got a
                  * FIN packet). In that case the peer will not sent more data
@@ -452,6 +454,9 @@ get_lwip_socket_events(struct lwip_sock *sock)
                 if (sock->conn->pcb.tcp == NULL ||
 		    sock->conn->pcb.tcp->state == CLOSE_WAIT)
 			events |= EPOLLRDHUP;
+
+		if (sock->conn->pcb.tcp == NULL)
+			events |= EPOLLHUP;
 	}
 
 	if (sock->lastdata.pbuf || sock->rcvevent > 0)
