@@ -379,6 +379,17 @@ void sys_free(void *ptr);
 #else
 #define MEMP_NUM_NETCONN 64
 #endif /* LWIP_TCP */
+/*
+ * Number of struct netbuf entries. The socket receive path (recv_udp)
+ * allocates one netbuf per received datagram and holds it until the
+ * application calls recv(). The lwIP default of 2 is too small: when
+ * the socket mailbox holds one netbuf and recv() is copying another,
+ * the next received datagram cannot allocate a netbuf and lwIP drops
+ * it without an error. Keep the count aligned with MEMP_NUM_NETCONN.
+ */
+#ifndef MEMP_NUM_NETBUF
+#define MEMP_NUM_NETBUF 64
+#endif
 #else
 #define LWIP_NETCONN 0
 #endif
