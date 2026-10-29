@@ -62,7 +62,22 @@ void sys_free(void *ptr);
  */
 #if CONFIG_LWIP_NOTHREADS
 #define NO_SYS 1
+#if CONFIG_LWIP_PERCORE || !defined(CONFIG_LWIP_PERCORE)
+#define LWIP_PERCORE 1
+#endif
+/* Single-threaded: there is no inter-task contention to protect */
+#define SYS_LIGHTWEIGHT_PROT 0
+#define LWIP_TCPIP_CORE_LOCKING 0
 #define LWIP_NETIF_LOOPBACK_MULTITHREADING 0
+/*
+ * Mailbox sizes for the sequential (netconn) API in mainloop mode.
+ * The recvmbox sizes must cover a full receive window of pending
+ * segments, the acceptmbox must cover the listen backlog.
+ */
+#define TCPIP_MBOX_SIZE 128
+#define DEFAULT_UDP_RECVMBOX_SIZE 64
+#define DEFAULT_TCP_RECVMBOX_SIZE 256
+#define DEFAULT_ACCEPTMBOX_SIZE 1024
 #else  /* CONFIG_LWIP_NOTHREADS */
 #define NO_SYS 0
 #define LWIP_NETIF_LOOPBACK_MULTITHREADING 1
@@ -74,6 +89,21 @@ void sys_free(void *ptr);
 #define DEFAULT_TCP_RECVMBOX_SIZE ((CONFIG_LWIP_TCP_RECVMBOX_FACTOR) * (TCPIP_MBOX_SIZE))
 #define DEFAULT_ACCEPTMBOX_SIZE (TCPIP_MBOX_SIZE)
 #endif /* CONFIG_LWIP_NOTHREADS */
+
+/*
+ * Per-core memp pools are split across CPU cores (LWIP_CORE_MAX).
+ * lwip_init() calls sys_timeouts_init(), which registers every enabled
+ * cyclic timer on the boot core at once. The lwIP default
+ * MEMP_NUM_SYS_TIMEOUT sizes one global pool, so the per-core split can
+ * leave a core with too few slots. At boot that core then fails the first
+ * extra allocation and crashes: "pool MEMP_SYS_TIMEOUT is empty".
+ * Size the pool by the core count and add headroom for the cyclic timers
+ * plus on-demand TCP and DHCP timers.
+ */
+#if defined(LWIP_PERCORE) && defined(CONFIG_UKPLAT_CPU_MAXCOUNT) && \
+    !defined(MEMP_NUM_SYS_TIMEOUT)
+#define MEMP_NUM_SYS_TIMEOUT (16 * CONFIG_UKPLAT_CPU_MAXCOUNT)
+#endif
 
 /**
  * Pbuf options
@@ -253,6 +283,9 @@ void sys_free(void *ptr);
 
 /* enable SO_REUSEADDR option */
 #define SO_REUSE 1
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT 15
+#endif
 #endif /* LWIP_SOCKET */
 
 /**
@@ -299,7 +332,10 @@ void sys_free(void *ptr);
 #ifndef MEMP_NUM_PBUF
 #define MEMP_NUM_PBUF ((MEMP_NUM_TCP_PCB * (TCP_SND_QUEUELEN)) / 2)
 #endif
+#if CONFIG_LWIP_THREADS
+/* The input message pool is only used by the threaded stack input queue */
 #define MEMP_NUM_TCPIP_MSG_INPKT TCPIP_MBOX_SIZE
+#endif /* CONFIG_LWIP_THREADS */
 #endif /* MEM_USE_POOLS */
 
 /**
@@ -329,9 +365,12 @@ void sys_free(void *ptr);
 #define LWIP_DHCP 0
 #endif
 
-#if CONFIG_LWIP_NOTHREADS
-#define LWIP_NETCONN 0
-#else
+/*
+ * The netconn API is the foundation of the Socket API. In threaded
+ * mode it is always available. In mainloop mode it is driven directly
+ * from the application context and is only needed by the Socket API.
+ */
+#if !CONFIG_LWIP_NOTHREADS || CONFIG_LWIP_SOCKET
 #define LWIP_NETCONN 1
 /* maximum number of struct netconn entries, which limits the maximum
  * number of open sockets */
@@ -340,6 +379,8 @@ void sys_free(void *ptr);
 #else
 #define MEMP_NUM_NETCONN 64
 #endif /* LWIP_TCP */
+#else
+#define LWIP_NETCONN 0
 #endif
 
 /**

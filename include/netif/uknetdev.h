@@ -56,9 +56,11 @@ err_t uknetdev_init(struct netif *nf);
  * support receive interrupts should be polled for packets.
  */
 void uknetdev_poll(struct netif *nf);
+void uknetdev_poll_queue(struct netif *nf, uint16_t queue_id);
 
 #ifdef CONFIG_LWIP_NOTHREADS
 void uknetdev_poll_all(void);
+void uknetdev_poll_rxqueue(uint16_t queue_id);
 #endif /* CONFIG_LWIP_NOTHREADS */
 
 struct netif *uknetdev_addif(struct uk_netdev *n

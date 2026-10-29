@@ -114,6 +114,21 @@ err_t sys_mbox_trypost_fromisr(sys_mbox_t *mbox, void *msg)
 	return ERR_OK;
 }
 
+#if CONFIG_LWIP_NOTHREADS
+/**
+ * In mainloop mode no other context posts to a mailbox that we are
+ * about to wait on, so waiting cannot succeed. Try once and report a
+ * timeout when the mailbox is empty.
+ */
+u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout __unused)
+{
+	UK_ASSERT(sys_mbox_valid(mbox));
+
+	if (uk_mbox_recv_try(mbox->mbox, msg) < 0)
+		return SYS_ARCH_TIMEOUT;
+	return 0;
+}
+#else
 /**
  * Blocks the thread until a message arrives in the mailbox, but does
  * not block the thread longer than "timeout" milliseconds (similar to
@@ -145,6 +160,7 @@ u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout)
 	}
 	return (u32_t) ukarch_time_nsec_to_msec(nsret);
 }
+#endif /* CONFIG_LWIP_NOTHREADS */
 
 /**
  * This is similar to sys_arch_mbox_fetch, however if a message is not

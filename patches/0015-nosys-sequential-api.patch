@@ -1,0 +1,190 @@
+--- a/src/api/api_msg.c	2021-11-10 19:58:51.000000000 +0100
++++ b/src/api/api_msg.c	2026-09-02 22:26:57.194617999 +0200
+@@ -88,6 +88,10 @@
+ 
+ #if LWIP_TCPIP_CORE_LOCKING
+ #define TCPIP_APIMSG_ACK(m)
++#elif NO_SYS
++/* No separate stack thread exists: the API call runs in the caller's
++   context, so nothing has to be signalled. */
++#define TCPIP_APIMSG_ACK(m)
+ #else /* LWIP_TCPIP_CORE_LOCKING */
+ #define TCPIP_APIMSG_ACK(m)   do { sys_sem_signal(LWIP_API_MSG_SEM(m)); } while(0)
+ #endif /* LWIP_TCPIP_CORE_LOCKING */
+--- a/src/api/err.c	2021-11-10 19:58:51.000000000 +0100
++++ b/src/api/err.c	2026-09-02 22:29:21.259617109 +0200
+@@ -42,7 +42,7 @@
+ 
+ #include "lwip/errno.h"
+ 
+-#if !NO_SYS
++#if !NO_SYS || LWIP_SOCKET
+ /** Table to quickly map an lwIP error (err_t) to a socket error
+   * by using -err as an index */
+ static const int err_to_errno_table[] = {
+--- a/src/api/tcpip.c	2021-11-10 19:58:51.000000000 +0100
++++ b/src/api/tcpip.c	2026-09-02 22:28:43.228505471 +0200
+@@ -655,4 +655,45 @@
+   return tcpip_try_callback(mem_free, m);
+ }
+ 
++#else /* !NO_SYS */
++
++#include "lwip/priv/api_msg.h"
++
++/*
++ * In single-threaded mode there is no separate stack thread. API
++ * functions are executed directly in the caller's context and the
++ * "wait" completes immediately.
++ */
++err_t
++tcpip_send_msg_wait_sem(tcpip_callback_fn fn, void *apimsg, sys_sem_t *sem)
++{
++  LWIP_UNUSED_ARG(sem);
++  fn(apimsg);
++  return ERR_OK;
++}
++
++err_t
++tcpip_api_call(tcpip_api_call_fn fn, struct tcpip_api_call_data *call)
++{
++  return fn(call);
++}
++
++err_t
++tcpip_callback(tcpip_callback_fn function, void *ctx)
++{
++  if (function) {
++    function(ctx);
++  }
++  return ERR_OK;
++}
++
++err_t
++tcpip_try_callback(tcpip_callback_fn function, void *ctx)
++{
++  if (function) {
++    function(ctx);
++  }
++  return ERR_OK;
++}
++
+ #endif /* !NO_SYS */
+--- a/src/core/init.c	2021-11-10 19:58:51.000000000 +0100
++++ b/src/core/init.c	2026-09-02 22:26:57.194617999 +0200
+@@ -172,9 +172,6 @@
+ #if (LWIP_NETIF_API && (NO_SYS==1))
+ #error "If you want to use NETIF API, you have to define NO_SYS=0 in your lwipopts.h"
+ #endif
+-#if ((LWIP_SOCKET || LWIP_NETCONN) && (NO_SYS==1))
+-#error "If you want to use Sequential API, you have to define NO_SYS=0 in your lwipopts.h"
+-#endif
+ #if (LWIP_PPP_API && (NO_SYS==1))
+ #error "If you want to use PPP API, you have to define NO_SYS=0 in your lwipopts.h"
+ #endif
+--- a/src/include/lwip/err.h	2021-11-10 19:58:51.000000000 +0100
++++ b/src/include/lwip/err.h	2026-09-02 22:29:25.657860300 +0200
+@@ -106,9 +106,9 @@
+ #define lwip_strerr(x) ""
+ #endif /* LWIP_DEBUG */
+ 
+-#if !NO_SYS
++#if !NO_SYS || LWIP_SOCKET
+ int err_to_errno(err_t err);
+-#endif /* !NO_SYS */
++#endif /* !NO_SYS || LWIP_SOCKET */
+ 
+ #ifdef __cplusplus
+ }
+--- a/src/include/lwip/priv/tcpip_priv.h	2021-11-10 19:58:51.000000000 +0100
++++ b/src/include/lwip/priv/tcpip_priv.h	2026-09-02 22:27:08.178226613 +0200
+@@ -39,7 +39,7 @@
+ 
+ #include "lwip/opt.h"
+ 
+-#if !NO_SYS /* don't build if not configured for use in lwipopts.h */
++#if !NO_SYS || LWIP_NETCONN || LWIP_SOCKET
+ 
+ #include "lwip/tcpip.h"
+ #include "lwip/sys.h"
+--- a/src/include/lwip/sys.h	2021-11-10 19:58:51.000000000 +0100
++++ b/src/include/lwip/sys.h	2026-09-02 22:26:57.194617999 +0200
+@@ -43,45 +43,11 @@
+ extern "C" {
+ #endif
+ 
+-#if NO_SYS
+-
+-/* For a totally minimal and standalone system, we provide null
+-   definitions of the sys_ functions. */
+-typedef u8_t sys_sem_t;
+-typedef u8_t sys_mutex_t;
+-typedef u8_t sys_mbox_t;
+-
+-#define sys_sem_new(s, c) ERR_OK
+-#define sys_sem_signal(s)
+-#define sys_sem_wait(s)
+-#define sys_arch_sem_wait(s,t)
+-#define sys_sem_free(s)
+-#define sys_sem_valid(s) 0
+-#define sys_sem_valid_val(s) 0
+-#define sys_sem_set_invalid(s)
+-#define sys_sem_set_invalid_val(s)
+-#define sys_mutex_new(mu) ERR_OK
+-#define sys_mutex_lock(mu)
+-#define sys_mutex_unlock(mu)
+-#define sys_mutex_free(mu)
+-#define sys_mutex_valid(mu) 0
+-#define sys_mutex_set_invalid(mu)
+-#define sys_mbox_new(m, s) ERR_OK
+-#define sys_mbox_fetch(m,d)
+-#define sys_mbox_tryfetch(m,d)
+-#define sys_mbox_post(m,d)
+-#define sys_mbox_trypost(m,d)
+-#define sys_mbox_free(m)
+-#define sys_mbox_valid(m)
+-#define sys_mbox_valid_val(m)
+-#define sys_mbox_set_invalid(m)
+-#define sys_mbox_set_invalid_val(m)
+-
+-#define sys_thread_new(n,t,a,s,p)
+-
+-#define sys_msleep(t)
+-
+-#else /* NO_SYS */
++/*
++ * The port provides the sys primitives (semaphores, mutexes, mailboxes)
++ * in all operation modes, including single-threaded. The declarations
++ * that follow therefore apply to both modes.
++ */
+ 
+ /** Return code for timeouts from sys_arch_mbox_fetch and sys_arch_sem_wait */
+ #define SYS_ARCH_TIMEOUT 0xffffffffUL
+@@ -417,9 +383,9 @@
+  * @param arg parameter passed to 'thread'
+  * @param stacksize stack size in bytes for the new thread (may be ignored by ports)
+  * @param prio priority of the new thread (may be ignored by ports) */
++#if !NO_SYS
+ sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread, void *arg, int stacksize, int prio);
+-
+-#endif /* NO_SYS */
++#endif /* !NO_SYS */
+ 
+ /**
+  * @ingroup sys_misc
+--- a/src/include/lwip/tcpip.h	2021-11-10 19:58:51.000000000 +0100
++++ b/src/include/lwip/tcpip.h	2026-09-02 22:28:17.231057516 +0200
+@@ -39,11 +39,12 @@
+ 
+ #include "lwip/opt.h"
+ 
+-#if !NO_SYS /* don't build if not configured for use in lwipopts.h */
++#if !NO_SYS || LWIP_NETCONN || LWIP_SOCKET
+ 
+ #include "lwip/err.h"
+ #include "lwip/timeouts.h"
+ #include "lwip/netif.h"
++#include "lwip/sys.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {

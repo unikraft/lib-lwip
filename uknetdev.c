@@ -53,6 +53,15 @@
 #include "netif/ethernet.h"
 #include <uk/atomic.h>
 
+#ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
+#include <uk/sched.h>
+#include <uk/sched_impl.h>
+#endif /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
+
+#if CONFIG_LWIP_NOTHREADS && LWIP_PERCORE
+#include "lwip_percore.h"
+#endif
+
 #include <uk/essentials.h>
 
 /*
@@ -92,6 +101,11 @@ struct lwip_netdev_data {
 	char *_name; /* Thread name */
 	struct uk_sched *sched; /* Scheduler information */
 #endif /* CONFIG_HAVE_SCHED */
+#if LWIP_IPV4
+	/* Last IPv4 address for which a gratuitous ARP was sent.
+	 * Zero means no gratuitous ARP was sent yet. */
+	ip4_addr_t last_grat_arp_ip;
+#endif /* LWIP_IPV4 */
 };
 
 /*
@@ -106,6 +120,15 @@ UK_CTASSERT((sizeof(struct lwip_netdev_data)) <= CONFIG_UK_NETDEV_SCRATCH_SIZE);
 #define netif_to_uknetdev(nf) \
 	((struct uk_netdev *) (nf)->state)
 
+/*
+ * Number of RX and TX queue pairs actually in use (set by uknetdev_init)
+ * and the current TX queue index. The TX output runs in the single lwIP
+ * tcpip thread, so the index needs no synchronization.
+ */
+static uint16_t uknetdev_nb_rxq = 1;
+static uint16_t uknetdev_nb_txq = 1;
+static uint16_t uknetdev_txq_rr __maybe_unused = 0;
+
 static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 				   uint16_t count)
 {
@@ -117,7 +140,11 @@ static uint16_t netif_alloc_rxpkts(void *argp, struct uk_netbuf *nb[],
 	lwip_data = (struct lwip_netdev_data *) argp;
 
 	for (i = 0; i < count; ++i) {
-		nb[i] = lwip_alloc_netbuf(lwip_data->pkt_a,
+		/*
+		 * The run-to-completion core allocates from its own
+		 * per-core allocator (the default if none is bound).
+		 */
+		nb[i] = lwip_alloc_netbuf(uk_alloc_get_current(),
 					  UKNETDEV_BUFLEN,
 					  lwip_data->dev_info.ioalign,
 					  lwip_data->dev_info.nb_encap_rx);
@@ -145,7 +172,11 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	lwip_data = (struct lwip_netdev_data *) dev->scratch_pad;
 	UK_ASSERT(lwip_data);
 
-	nb = uk_netbuf_alloc_buf(lwip_data->pkt_a,
+	/*
+	 * The run-to-completion core allocates from its own
+	 * per-core allocator (the default if none is bound).
+	 */
+	nb = uk_netbuf_alloc_buf(uk_alloc_get_current(),
 				 UKNETDEV_BUFLEN,
 				 lwip_data->dev_info.ioalign,
 				 lwip_data->dev_info.nb_encap_tx,
@@ -174,10 +205,28 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 	}
 	nb->len = p->tot_len;
 
-	/* Transmit packet */
-	do {
-		ret = uk_netdev_tx_one(dev, 0, nb);
-	} while (uk_netdev_status_notready(ret));
+	/*
+	 * Transmit the packet on a dedicated per-core TX queue in run-to-completion
+	 * NO_SYS mode, or a round-robin choice of TX queue in threaded mode.
+	 */
+#if CONFIG_LWIP_NOTHREADS && LWIP_PERCORE
+	{
+		uint16_t txq = (uint16_t)(lwip_current_core_id() % uknetdev_nb_txq);
+
+		do {
+			ret = uk_netdev_tx_one(dev, txq, nb);
+		} while (uk_netdev_status_notready(ret));
+	}
+#else
+	{
+		uint16_t txq = uknetdev_txq_rr;
+
+		uknetdev_txq_rr = (txq + 1) % uknetdev_nb_txq;
+		do {
+			ret = uk_netdev_tx_one(dev, txq, nb);
+		} while (uk_netdev_status_notready(ret));
+	}
+#endif
 	if (unlikely(ret < 0)) {
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Failed to send %"PRIu16" bytes\n",
@@ -198,7 +247,7 @@ static err_t uknetdev_output(struct netif *nf, struct pbuf *p)
 }
 
 static void uknetdev_input(struct uk_netdev *dev,
-			   uint16_t queue_id __unused, void *argp)
+			   uint16_t queue_id, void *argp)
 {
 	struct netif *nf = (struct netif *) argp;
 	struct uk_netbuf *nb, *nbi;
@@ -213,7 +262,7 @@ static void uknetdev_input(struct uk_netdev *dev,
 	LWIP_DEBUGF(NETIF_DEBUG, ("%s: %c%c%u: Poll receive queue...\n",
 				  __func__, nf->name[0], nf->name[1], nf->num));
 	do {
-		ret = uk_netdev_rx_one(dev, 0, &nb);
+		ret = uk_netdev_rx_one(dev, queue_id, &nb);
 		LWIP_DEBUGF(NETIF_DEBUG,
 			    ("%s: %c%c%u: Input status %d (%c%c%c)\n",
 			     __func__, nf->name[0], nf->name[1], nf->num, ret,
@@ -298,9 +347,10 @@ static void uknetdev_input(struct uk_netdev *dev,
  * mainloop. Maybe we should revisit this interface when we add support for
  * netif removal in order to let API users re-initialize interfaces.
  */
-void uknetdev_poll(struct netif *nf)
+void uknetdev_poll_queue(struct netif *nf, uint16_t queue_id)
 {
 	struct uk_netdev *dev;
+	int link_up;
 
 	UK_ASSERT(nf);
 	/*
@@ -314,11 +364,67 @@ void uknetdev_poll(struct netif *nf)
 	dev = netif_to_uknetdev(nf);
 	UK_ASSERT(dev);
 
-	uknetdev_input(dev, 0, nf);
+	uknetdev_input(dev, queue_id, nf);
+
+	link_up = uk_netdev_link_state_get(dev);
+	if (link_up && !netif_is_link_up(nf))
+		netif_set_link_up(nf);
+	else if (!link_up && netif_is_link_up(nf))
+		netif_set_link_down(nf);
+}
+
+void uknetdev_poll(struct netif *nf)
+{
+	uknetdev_poll_queue(nf, 0);
 }
 
 #ifdef CONFIG_LWIP_NOTHREADS
-void uknetdev_poll_all(void)
+#if LWIP_IPV4 && LWIP_ARP
+/*
+ * Send a Gratuitous ARP for the current IPv4 address of the netif.
+ *
+ * A reused IP address may leave stale entries in the neighbor tables
+ * of the other hosts on the segment. Broadcasting the "this IP is at
+ * this MAC" mapping from the new owner updates those tables. The
+ * Gratuitous ARP goes out when the interface comes up with an
+ * address and again whenever the address changes (for example a new
+ * DHCP lease).
+ */
+static void uknetdev_send_gratuitous_arp(struct netif *nf)
+{
+	struct uk_netdev *dev;
+	struct lwip_netdev_data *lwip_data;
+	ip4_addr_t ip;
+
+	UK_ASSERT(nf);
+	dev = netif_to_uknetdev(nf);
+	UK_ASSERT(dev);
+	lwip_data = (struct lwip_netdev_data *)dev->scratch_pad;
+
+	if (!netif_is_link_up(nf)) {
+		lwip_data->last_grat_arp_ip.addr = 0;
+		return;
+	}
+
+	if (!netif_is_up(nf) || !(nf->flags & NETIF_FLAG_ETHARP))
+		return;
+
+	ip = *netif_ip4_addr(nf);
+	if (ip4_addr_isany_val(ip))
+		return;
+
+	/* ip4_addr_cmp expands without outer parentheses. Comparing its
+	 * result to zero inverts the test. Compare the fields directly.
+	 */
+	if (ip.addr == lwip_data->last_grat_arp_ip.addr)
+		return;
+
+	lwip_data->last_grat_arp_ip = ip;
+	etharp_gratuitous(nf);
+}
+#endif /* LWIP_IPV4 && LWIP_ARP */
+
+void uknetdev_poll_rxqueue(uint16_t queue_id)
 {
 	struct netif *nf;
 
@@ -330,9 +436,20 @@ void uknetdev_poll_all(void)
 	 */
 	NETIF_FOREACH(nf) {
 		if (nf->name[0] == UKNETDEV_NETIF_NAME0
-		    && nf->name[1] == UKNETDEV_NETIF_NAME1)
-			uknetdev_poll(nf);
+		    && nf->name[1] == UKNETDEV_NETIF_NAME1) {
+			uknetdev_poll_queue(nf, queue_id);
+#if LWIP_IPV4 && LWIP_ARP
+			/* Announce the address when the interface comes up
+			 * or the address changes. */
+			uknetdev_send_gratuitous_arp(nf);
+#endif /* LWIP_IPV4 && LWIP_ARP */
+		}
 	}
+}
+
+void uknetdev_poll_all(void)
+{
+	uknetdev_poll_rxqueue(0);
 }
 
 #else /* CONFIG_LWIP_NOTHREADS */
@@ -362,6 +479,42 @@ static void uknetdev_updown(struct netif *nf)
 
 	if (nf->flags & NETIF_FLAG_UP) {
 		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
+#ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
+			{
+				/*
+				 * One dispatcher thread per RX queue, each bound to
+				 * its own core. Enable the per-queue interrupt of
+				 * every queue so that each dispatcher is woken by its
+				 * own MSI-X.
+				 */
+				unsigned int i;
+				int flush = 0;
+
+				for (i = 0; i < uknetdev_nb_rxq; i++) {
+					ret = uk_netdev_rxq_intr_enable(dev, i);
+					if (ret < 0) {
+						LWIP_DEBUGF(NETIF_DEBUG,
+							("%s: %c%c%u: Failed to enable rx interrupt mode on queue %u of netdev %u\n",
+							 __func__, nf->name[0], nf->name[1],
+							 nf->num, i, uk_netdev_id_get(dev)));
+					} else {
+						LWIP_DEBUGF(NETIF_DEBUG,
+							("%s: %c%c%u: Enabled rx interrupt mode on queue %u of netdev %u\n",
+							 __func__, nf->name[0], nf->name[1],
+							 nf->num, i, uk_netdev_id_get(dev)));
+						if (ret == 1)
+							flush = 1;
+					}
+				}
+
+				/*
+				 * The device told us that we need to flush the
+				 * receive queue before interrupts are enabled.
+				 */
+				if (flush)
+					uknetdev_poll(nf);
+			}
+#else /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 			ret = uk_netdev_rxq_intr_enable(dev, 0);
 			if (ret < 0) {
 				LWIP_DEBUGF(NETIF_DEBUG,
@@ -388,6 +541,7 @@ static void uknetdev_updown(struct netif *nf)
 				 */
 				uknetdev_poll(nf);
 			}
+#endif /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 		} else {
 #ifdef CONFIG_HAVE_SCHED
 			LWIP_DEBUGF(NETIF_DEBUG,
@@ -409,11 +563,28 @@ static void uknetdev_updown(struct netif *nf)
 		 * Cleanup the thread on stopping the network interface.
 		 */
 		if (uk_netdev_rxintr_supported(lwip_data->dev_info.features)) {
+#ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
+			{
+				unsigned int i;
+
+				/* Each dispatcher is woken by its own per-queue
+				 * interrupt, so disable the interrupt of every
+				 * queue. */
+				for (i = 0; i < uknetdev_nb_rxq; i++) {
+					uk_netdev_rxq_intr_disable(dev, i);
+					LWIP_DEBUGF(NETIF_DEBUG,
+						("%s: %c%c%u: Disabled rx interrupts on queue %u of netdev %u\n",
+						 __func__, nf->name[0], nf->name[1], nf->num, i,
+						 uk_netdev_id_get(dev)));
+				}
+			}
+#else /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 			uk_netdev_rxq_intr_disable(dev, 0);
 			LWIP_DEBUGF(NETIF_DEBUG,
 					("%s: %c%c%u: Disabled rx interrupts on netdev %u\n",
 					 __func__, nf->name[0], nf->name[1],
 					 nf->num, uk_netdev_id_get(dev)));
+#endif /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 		}
 
 	}
@@ -434,6 +605,27 @@ static void uknetdev_updown(struct netif *nf)
  * store lwip_data.
  */
 UK_CTASSERT(sizeof(struct lwip_netdev_data) <= CONFIG_LWIP_UKNETDEV_SCRATCH);
+
+#ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
+/*
+ * Return the scheduler that owns vCPU idx by walking the per-LCPU
+ * scheduler list. Falls back to the current scheduler when there are
+ * fewer online cores than idx + 1 (single-core fallback).
+ */
+static struct uk_sched *uknetdev_lcpu_sched(unsigned int idx)
+{
+	struct uk_sched *s = uk_sched_head;
+	unsigned int i;
+
+	for (i = 0; s && i < idx; i++)
+		s = s->next;
+
+	if (!s)
+		s = uk_sched_current();
+
+	return s;
+}
+#endif /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 
 err_t uknetdev_init(struct netif *nf)
 {
@@ -485,6 +677,9 @@ err_t uknetdev_init(struct netif *nf)
 	if (!lwip_data->dev_info.max_rx_queues
 	    || !lwip_data->dev_info.max_tx_queues)
 		return ERR_IF;
+#if LWIP_IPV4
+	lwip_data->last_grat_arp_ip.addr = 0;
+#endif /* LWIP_IPV4 */
 #if CONFIG_LWIP_UKNETDEV_POLLONLY
 	/* Unset receive interrupt support: We force polling mode */
 	lwip_data->dev_info.features &= ~UK_NETDEV_F_RXQ_INTR;
@@ -500,10 +695,11 @@ err_t uknetdev_init(struct netif *nf)
 
 	/*
 	 * Device configuration,
-	 * we want to use just one queue for each direction
+	 * request the maximum number of queue pairs the API supports;
+	 * the device reports how many it can actually deliver.
 	 */
-	dev_conf.nb_rx_queues = 1;
-	dev_conf.nb_tx_queues = 1;
+	dev_conf.nb_rx_queues = CONFIG_LIBUKNETDEV_MAXNBQUEUES;
+	dev_conf.nb_tx_queues = CONFIG_LIBUKNETDEV_MAXNBQUEUES;
 	dev_conf.lro = !!(lwip_data->dev_info.features & UK_NETDEV_F_LRO);
 	ret = uk_netdev_configure(dev, &dev_conf);
 	if (ret < 0) {
@@ -515,49 +711,71 @@ err_t uknetdev_init(struct netif *nf)
 	}
 
 	/*
+	 * Use as many queue pairs as requested, but never more than the
+	 * device actually supports (the driver caps at its own limit).
+	 * This is the single-queue fallback for devices with one pair.
+	 */
+	{
+		unsigned int nbq = CONFIG_LIBUKNETDEV_MAXNBQUEUES;
+
+		if (nbq > lwip_data->dev_info.max_rx_queues)
+			nbq = lwip_data->dev_info.max_rx_queues;
+		if (nbq > lwip_data->dev_info.max_tx_queues)
+			nbq = lwip_data->dev_info.max_tx_queues;
+		if (nbq < 1)
+			nbq = 1;
+
+		uknetdev_nb_rxq = nbq;
+		uknetdev_nb_txq = nbq;
+	}
+
+	/*
 	 * Receive queue,
 	 * use driver default descriptors
 	 */
-	rxq_conf.a = a;
-	rxq_conf.alloc_rxpkts = netif_alloc_rxpkts;
-	rxq_conf.alloc_rxpkts_argp = lwip_data;
+	for (i = 0; i < uknetdev_nb_rxq; i++) {
+		rxq_conf.a = a;
+		rxq_conf.alloc_rxpkts = netif_alloc_rxpkts;
+		rxq_conf.alloc_rxpkts_argp = lwip_data;
 #ifdef CONFIG_LWIP_NOTHREADS
-	/*
-	 * In mainloop mode, we will not use interrupts.
-	 */
-	rxq_conf.callback = NULL;
-	rxq_conf.callback_cookie = NULL;
-#else  /* CONFIG_LWIP_NOTHREADS */
-	rxq_conf.callback = uknetdev_input;
-	rxq_conf.callback_cookie = nf;
+		rxq_conf.callback = NULL;
+		rxq_conf.callback_cookie = NULL;
+#else /* CONFIG_LWIP_NOTHREADS */
+		rxq_conf.callback = uknetdev_input;
+		rxq_conf.callback_cookie = nf;
 #ifdef CONFIG_LIBUKNETDEV_DISPATCHERTHREADS
-	rxq_conf.s = uk_sched_current();
-	if (!rxq_conf.s)
-		return ERR_IF;
-
+		/* One dispatcher thread per RX queue, each bound to its
+		 * own core so RX is spread across the available CPUs. */
+		rxq_conf.s = uknetdev_lcpu_sched(i);
+		if (!rxq_conf.s)
+			return ERR_IF;
 #endif /* CONFIG_LIBUKNETDEV_DISPATCHERTHREADS */
 #endif /* CONFIG_LWIP_NOTHREADS */
-	ret = uk_netdev_rxq_configure(dev, 0, 0, &rxq_conf);
-	if (ret < 0) {
-		LWIP_DEBUGF(NETIF_DEBUG,
-			    ("%s: %c%c%u: Failed to configure rx queue of netdev %u\n",
-			     __func__, nf->name[0], nf->name[1], nf->num,
-			     uk_netdev_id_get(dev)));
-		return ERR_IF;
+
+		ret = uk_netdev_rxq_configure(dev, i, 0, &rxq_conf);
+		if (ret < 0) {
+			LWIP_DEBUGF(NETIF_DEBUG,
+				    ("%s: %c%c%u: Failed to configure rx queue %u of netdev %u\n",
+				     __func__, nf->name[0], nf->name[1], nf->num, i,
+				     uk_netdev_id_get(dev)));
+			return ERR_IF;
+		}
 	}
 
 	/*
 	 * Transmit queue,
 	 * use driver default descriptors
 	 */
-	txq_conf.a = a;
-	ret = uk_netdev_txq_configure(dev, 0, 0, &txq_conf);
-	if (ret < 0) {
-		LWIP_DEBUGF(NETIF_DEBUG,
-			    ("%s: %c%c%u: Failed to configure tx queue of netdev %u\n",
-			     __func__, nf->name[0], nf->name[1], nf->num,
-			     uk_netdev_id_get(dev)));
-		return ERR_IF;
+	for (i = 0; i < uknetdev_nb_txq; i++) {
+		txq_conf.a = a;
+		ret = uk_netdev_txq_configure(dev, i, 0, &txq_conf);
+		if (ret < 0) {
+			LWIP_DEBUGF(NETIF_DEBUG,
+				    ("%s: %c%c%u: Failed to configure tx queue %u of netdev %u\n",
+				     __func__, nf->name[0], nf->name[1], nf->num, i,
+				     uk_netdev_id_get(dev)));
+			return ERR_IF;
+		}
 	}
 
 	/* Start interface */
@@ -583,8 +801,11 @@ err_t uknetdev_init(struct netif *nf)
 
 	/* Device capabilities */
 	netif_set_flags(nf, (NETIF_FLAG_BROADCAST
-			     | NETIF_FLAG_ETHARP
-			     | NETIF_FLAG_LINK_UP));
+			     | NETIF_FLAG_ETHARP));
+	if (uk_netdev_link_state_get(dev))
+		netif_set_link_up(nf);
+	else
+		netif_set_link_down(nf);
 	LWIP_DEBUGF(NETIF_DEBUG,
 		    ("%s: %c%c%u: flags: %"PRIx8"\n",
 		     __func__, nf->name[0], nf->name[1], nf->num, nf->flags));

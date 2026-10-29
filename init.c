@@ -41,6 +41,9 @@
 #include "lwip/inet.h"
 #if CONFIG_LWIP_NOTHREADS
 #include "lwip/timeouts.h"
+#if LWIP_PERCORE
+#include "lwip_percore.h"
+#endif
 #endif /* CONFIG_LWIP_NOTHREADS */
 #if !CONFIG_LWIP_NOTHREADS || CONFIG_LWIP_WAITIFACE
 #include <uk/semaphore.h>
@@ -180,6 +183,9 @@ static int liblwip_init(struct uk_init_ctx *ictx __unused)
 #endif /* CONFIG_LWIP_WAITIFACE */
 
 #if CONFIG_LWIP_NOTHREADS
+#if LWIP_PERCORE
+	lwip_core_state_init_all();
+#endif
 	lwip_init();
 #else /* CONFIG_LWIP_NOTHREADS */
 	tcpip_init(_lwip_init_done, NULL);

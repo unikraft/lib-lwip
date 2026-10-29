@@ -67,6 +67,20 @@ void sys_sem_signal(sys_sem_t *sem)
 	uk_semaphore_up(&sem->sem);
 }
 
+#if CONFIG_LWIP_NOTHREADS
+/**
+ * In mainloop mode the semaphore is only ever consumed by the context
+ * that also signals it, so waiting can never succeed. Try once and
+ * report a timeout when the semaphore is not available.
+ */
+u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout __unused)
+{
+	uk_pr_debug("sys_arch_sem_wait(%p, %"PRIu32")\n", sem, timeout);
+	if (uk_semaphore_down_try(&sem->sem) == 0)
+		return SYS_ARCH_TIMEOUT;
+	return 0;
+}
+#else
 /**
  * Blocks the thread while waiting for the semaphore to be
  * signaled. If the "timeout" argument is non-zero, the thread should
@@ -98,3 +112,4 @@ u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout)
 
 	return (u32_t) ukarch_time_nsec_to_msec(nsret);
 }
+#endif /* CONFIG_LWIP_NOTHREADS */

@@ -6,6 +6,11 @@ menuconfig LIBLWIP
 	select LIBUKRANDOM
 	select LIBUKBITOPS if LIBPOSIX_NETLINK
 	select HAVE_NW_STACK
+	select LIBUKLOCK
+	select LIBUKLOCK_SEMAPHORE
+	select LIBUKLOCK_MUTEX
+	select LIBUKMPI
+	select LIBUKMPI_MBOX
 
 if LIBLWIP
 choice
@@ -114,7 +119,17 @@ config LWIP_NOTHREADS
 	help
 		No thread is created to operate the stack. The stack has to be
 		called from the same context as all stack interactions. This
-		includes polling network devices. The Socket API is unavailable.
+		includes polling network devices (uknetdev_poll_all()) and
+		processing timers (sys_check_timeouts()). The Socket API is
+		available; it runs synchronously in the caller's context.
+
+config LWIP_PERCORE
+	bool "Per-core stack state (NO_SYS mode)"
+	depends on LWIP_NOTHREADS
+	default y
+	help
+		Encapsulate lwIP stack state in per-core storage.
+		Each CPU core maintains independent TCP state and timers.
 
 config LWIP_THREADS
 	bool "Threaded"
@@ -321,7 +336,7 @@ config LWIP_DNS_TABLE_SIZE
 endif
 
 menuconfig LWIP_SOCKET
-	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
+	depends on (LWIP_UDP || LWIP_TCP)
 	bool "Socket API"
 	select LIBPOSIX_SOCKET
 	default y

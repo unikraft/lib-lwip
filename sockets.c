@@ -456,8 +456,31 @@ get_lwip_socket_events(struct lwip_sock *sock)
 
 	if (sock->lastdata.pbuf || sock->rcvevent > 0)
 		events |= EPOLLIN | EPOLLRDNORM;
-	if (sock->sendevent != 0)
+
+	/*
+	 * Report EPOLLOUT from the live send-buffer state, not from the
+	 * sendevent latch. The netconn layer sets sendevent on a low-water
+	 * edge (NETCONN_EVT_SENDPLUS) and clears it only on the opposite
+	 * edge. A small write that never fills the buffer leaves sendevent
+	 * stuck at 1, so the latch reports the socket as writable forever.
+	 * For TCP, compute writability as a level instead: the socket is
+	 * writable when a write would not return EWOULDBLOCK, that is the
+	 * send buffer has room and the send queue is below the tcp_write
+	 * limit. UDP and raw sockets have no flow control, so keep the
+	 * sendevent flag for them; it stays set.
+	 */
+	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP) {
+		struct tcp_pcb *pcb = sock->conn->pcb.tcp;
+
+		if (pcb != NULL && tcp_sndbuf(pcb) > 0 &&
+		    tcp_sndqueuelen(pcb) <
+			    LWIP_MIN(TCP_SND_QUEUELEN,
+				     (TCP_SNDQUEUELEN_OVERFLOW + 1)))
+			events |= EPOLLOUT | EPOLLWRNORM;
+	} else if (sock->sendevent != 0) {
 		events |= EPOLLOUT | EPOLLWRNORM;
+	}
+
 	if (sock->errevent != 0)
 		events |= EPOLLERR;
 
@@ -482,6 +505,30 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 	events = get_lwip_socket_events(sock);
 	posix_sock_event_assign(sockobj, events);
 }
+
+#if CONFIG_LIBPOSIX_SOCKET_POLLED
+/*
+ * On-demand event level for polled socket queues. The caller re-polls
+ * the live lwIP socket state, so the queue itself does not store
+ * levels: this callback is the single source of truth.
+ */
+static unsigned int
+lwip_posix_socket_poll(posix_sock *file, unsigned int mask)
+{
+	int lwip_fd;
+	unsigned int revents;
+	struct lwip_sock *sock;
+
+	lwip_fd = _lwip_getfd(file);
+
+	sock = lwip_socket_dbg_get_socket(lwip_fd);
+	if (unlikely(!sock || !sock->conn))
+		return 0;
+
+	revents = get_lwip_socket_events(sock);
+	return revents & mask;
+}
+#endif /* CONFIG_LIBPOSIX_SOCKET_POLLED */
 
 static void
 lwip_posix_socket_poll_setup(posix_sock *file)
@@ -529,6 +576,9 @@ static struct posix_socket_ops lwip_posix_socket_ops = {
 	.write		= lwip_posix_socket_write,
 	.close		= lwip_posix_socket_close,
 	.ioctl		= lwip_posix_socket_ioctl,
+#if CONFIG_LIBPOSIX_SOCKET_POLLED
+	.poll		= lwip_posix_socket_poll,
+#endif /* CONFIG_LIBPOSIX_SOCKET_POLLED */
 	.poll_setup	= lwip_posix_socket_poll_setup,
 };
 
