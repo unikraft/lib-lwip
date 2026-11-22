@@ -86,14 +86,25 @@
 	do { } while (0)
 #endif /* CONFIG_LIBUKDEBUG_ENABLE_ASSERT */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+unsigned long uk_lwip_sys_arch_protect(void);
+void uk_lwip_sys_arch_unprotect(unsigned long irqf);
+
+#ifdef __cplusplus
+}
+#endif
+
 /* lightweight synchronization mechanisms */
 #define SYS_ARCH_DECL_PROTECT(_x) \
 	unsigned long (_x)
 
 #define SYS_ARCH_PROTECT(_x) \
-	({ (_x) = uk_lcpu_save_irqf(); })
+	({ (_x) = uk_lwip_sys_arch_protect(); })
 
 #define SYS_ARCH_UNPROTECT(_x) \
-	uk_lcpu_restore_irqf((_x))
+	uk_lwip_sys_arch_unprotect((_x))
 
 #endif /* __LWIP_ARCH_CC_H__ */
