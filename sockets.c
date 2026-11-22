@@ -59,7 +59,7 @@ int _lwip_ignore_noncrit_msgflags(int flags)
 }
 
 /* Pending notifications are protected by SYS_ARCH_PROTECT.
- * A queued entry owns a file reference until its edges have been dispatched.
+ * A queued entry owns a file reference until notification completes.
  */
 struct lwip_posix_socket {
 	int fd;
@@ -513,7 +513,7 @@ static void lwip_posix_poll_worker(void *arg __unused)
 {
 	for (;;) {
 		struct lwip_posix_socket *state;
-		unsigned int edges;
+		unsigned int levels, edges;
 		posix_sock *file;
 		SYS_ARCH_DECL_PROTECT(lev);
 
@@ -524,11 +524,12 @@ static void lwip_posix_poll_worker(void *arg __unused)
 					    struct lwip_posix_socket, pending);
 		uk_list_del_init(&state->pending);
 		file = state->file;
+		levels = state->last_events;
 		edges = state->pending_edges;
 		state->pending_edges = 0;
 		SYS_ARCH_UNPROTECT(lev);
 
-		posix_sock_event_set(file, edges);
+		posix_sock_event_notify(file, levels, edges);
 		uk_file_release(file);
 	}
 }
@@ -545,8 +546,7 @@ uk_lib_initcall(lwip_posix_poll_start, 0);
 
 void
 lwip_posix_socket_event_callback(struct lwip_sock *sock,
-				 enum netconn_evt evt __unused,
-				 u16_t len __unused)
+				 enum netconn_evt evt, u16_t len __unused)
 {
 	struct lwip_posix_socket *state;
 	posix_sock *file = sock->sock_data;
@@ -558,7 +558,13 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 	events = get_lwip_socket_events(sock);
 	edges = events & ~state->last_events;
 	state->last_events = events;
-	if (!edges)
+	/*
+	 * A blocking waiter needs a level notification on a readiness gain,
+	 * including when a buffered read drained between callbacks. Only
+	 * `edges` are sent to epoll.
+	 */
+	if (!edges && (!events || evt == NETCONN_EVT_RCVMINUS ||
+		       evt == NETCONN_EVT_SENDMINUS))
 		return;
 	if (!uk_list_empty(&state->pending)) {
 		state->pending_edges |= edges;
