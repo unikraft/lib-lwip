@@ -497,15 +497,16 @@ lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 
 #if LWIP_TCP
 static bool
-lwip_mailbox_has_data(struct netconn *conn __maybe_unused, sys_mbox_t *mbox,
-		      unsigned int blocked_flags __maybe_unused)
+lwip_mailbox_has_data(struct netconn *conn, sys_mbox_t *mbox,
+		      unsigned int blocked_flags)
 {
 	if (!sys_mbox_valid(mbox))
 		return false;
 #if LWIP_NETCONN_FULLDUPLEX
+	blocked_flags |= NETCONN_FLAG_MBOXINVALID;
+#endif /* LWIP_NETCONN_FULLDUPLEX */
 	if (netconn_is_flag_set(conn, blocked_flags))
 		return false;
-#endif /* LWIP_NETCONN_FULLDUPLEX */
 	return !uk_mbox_is_empty(mbox->mbox);
 }
 #endif /* LWIP_TCP */
@@ -523,13 +524,13 @@ get_lwip_socket_events(struct lwip_sock *sock)
 	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP) {
 		struct netconn *conn = sock->conn;
 		unsigned int state = conn->tcp_poll_state;
-		unsigned int invalid = NETCONN_FLAG_MBOXINVALID;
+		unsigned int invalid = 0;
 		sys_mbox_t *mbox = &conn->recvmbox;
 
 		if (state & NETCONN_TCP_POLL_READ_CLOSED)
 			events |= EPOLLRDHUP;
 		if (state & NETCONN_TCP_POLL_LISTEN) {
-			invalid |= NETCONN_FLAG_MBOXCLOSED;
+			invalid = NETCONN_FLAG_MBOXCLOSED;
 			mbox = &conn->acceptmbox;
 			readable = false;
 		} else {
