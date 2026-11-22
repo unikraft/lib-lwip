@@ -464,7 +464,7 @@ lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 #if LWIP_NETCONN_FULLDUPLEX
 #define NETCONN_RECVMBOX_WAITABLE(conn)					\
 	(sys_mbox_valid(&(conn)->recvmbox) &&				\
-	 (((conn)->flags & NETCONN_FLAG_MBOXINVALID) == 0))
+	 !netconn_is_flag_set((conn), NETCONN_FLAG_MBOXINVALID))
 #else /* LWIP_NETCONN_FULLDUPLEX */
 #define NETCONN_RECVMBOX_WAITABLE(conn)					\
 	sys_mbox_valid(&(conn)->recvmbox)
