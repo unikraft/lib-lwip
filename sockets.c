@@ -68,10 +68,14 @@ struct lwip_posix_socket {
 	struct uk_list_head pending;
 	unsigned int last_events;
 	unsigned int pending_edges;
+	unsigned int write_generation;
 };
 
 static UK_LIST_HEAD(lwip_poll_pending);
 static struct uk_semaphore lwip_poll_available;
+
+static void lwip_posix_socket_refresh_read(const struct uk_file *file);
+static void lwip_refresh_write(posix_sock *file, unsigned int generation);
 
 static inline
 int _lwip_getfd(posix_sock *sock)
@@ -79,6 +83,13 @@ int _lwip_getfd(posix_sock *sock)
 	struct lwip_posix_socket *state = posix_sock_get_data(sock);
 
 	return state->fd;
+}
+
+static unsigned int lwip_write_generation(posix_sock *file)
+{
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
+
+	return __atomic_load_n(&state->write_generation, __ATOMIC_RELAXED);
 }
 
 static void *lwip_posix_socket_alloc(struct uk_alloc *allocator, int fd)
@@ -147,8 +158,12 @@ lwip_posix_socket_accept4(posix_sock *file,
 	UK_ASSERT(listen_fd >= 0);
 
 	new_fd = lwip_accept(listen_fd, addr, addr_len);
-	if (unlikely(new_fd < 0))
-		return ERR2PTR(-errno);
+	if (unlikely(new_fd < 0)) {
+		rc = -errno;
+		if (rc == -EAGAIN || rc == -EWOULDBLOCK)
+			lwip_posix_socket_refresh_read(file);
+		return ERR2PTR(rc);
+	}
 
 	rc = lwip_socket_apply_flags(new_fd, flags);
 	if (unlikely(rc)) {
@@ -306,8 +321,6 @@ lwip_posix_socket_listen(posix_sock *file, int backlog)
 	return ret;
 }
 
-static void lwip_posix_socket_refresh_read(const struct uk_file *file);
-
 static ssize_t
 lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 			   size_t len, int flags, struct sockaddr *from,
@@ -357,6 +370,7 @@ static ssize_t
 lwip_posix_socket_sendmsg(posix_sock *file,
 			  const struct msghdr *msg, int flags)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -367,6 +381,8 @@ lwip_posix_socket_sendmsg(posix_sock *file,
 	ret = lwip_sendmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -377,6 +393,7 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			 const struct sockaddr *dest_addr,
 			 socklen_t addrlen)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -389,6 +406,8 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			  dest_addr, addrlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -417,6 +436,7 @@ static ssize_t
 lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 			size_t iovcnt)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -426,6 +446,8 @@ lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 	ret = lwip_writev(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -539,8 +561,30 @@ static void lwip_posix_socket_refresh_read(const struct uk_file *file)
 	SYS_ARCH_PROTECT(lev);
 	state = posix_sock_get_data(file);
 	sock = lwip_socket_dbg_get_socket(state->fd);
-	if (!(get_lwip_socket_events(sock) & EPOLLIN))
+	if (!(get_lwip_socket_events(sock) & EPOLLIN)) {
 		state->last_events &= ~LWIP_READ_EVENTS;
+		state->pending_edges &= ~LWIP_READ_EVENTS;
+	}
+	SYS_ARCH_UNPROTECT(lev);
+}
+
+static void lwip_refresh_write(posix_sock *file, unsigned int generation)
+{
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
+	struct lwip_sock *sock;
+
+	SYS_ARCH_DECL_PROTECT(lev);
+
+	SYS_ARCH_PROTECT(lev);
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	/* A SENDPLUS after the send started may have restored readiness. */
+	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP &&
+	    generation == lwip_write_generation(file)) {
+		netconn_set_flags(sock->conn, NETCONN_FLAG_CHECK_WRITESPACE);
+		sock->sendevent = 0;
+		state->last_events &= ~LWIP_WRITE_EVENTS;
+		state->pending_edges &= ~LWIP_WRITE_EVENTS;
+	}
 	SYS_ARCH_UNPROTECT(lev);
 }
 
@@ -590,6 +634,9 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 	if (!file)
 		return;
 	state = posix_sock_get_data(file);
+	if (evt == NETCONN_EVT_SENDPLUS)
+		__atomic_add_fetch(&state->write_generation, 1,
+				   __ATOMIC_RELAXED);
 	events = get_lwip_socket_events(sock);
 	edges = events & ~state->last_events;
 	/* New receive events can arrive while the socket is still readable. */
