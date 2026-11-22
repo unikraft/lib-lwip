@@ -459,16 +459,20 @@ lwip_posix_socket_close(posix_sock *file)
 	struct uk_alloc *allocator = posix_sock_get_driver(file)->allocator;
 	struct lwip_sock *sock;
 	SYS_ARCH_DECL_PROTECT(lev);
+	int queued;
 	int ret;
 
-	/* Once the last strong reference is gone, no queue entry owns this
-	 * file. Disconnect the callback before releasing the lwIP descriptor.
+	/* Disconnect the callback before releasing the lwIP descriptor. A
+	 * queued notification holds only a weak reference, so it does not
+	 * delay the final close. Take it off the queue and drop its reference.
 	 */
 	SYS_ARCH_PROTECT(lev);
 	sock = lwip_socket_dbg_get_socket(state->fd);
 	if (sock && sock->sock_data == file)
 		sock->sock_data = NULL;
-	UK_ASSERT(uk_list_empty(&state->pending));
+	queued = !uk_list_empty(&state->pending);
+	if (queued)
+		uk_list_del_init(&state->pending);
 	posix_sock_set_data(file, NULL);
 	SYS_ARCH_UNPROTECT(lev);
 
@@ -476,6 +480,8 @@ lwip_posix_socket_close(posix_sock *file)
 	if (unlikely(ret < 0))
 		ret = -errno;
 	uk_free(allocator, state);
+	if (queued)
+		uk_file_release_weak(file);
 	return ret;
 }
 
@@ -599,7 +605,11 @@ static void lwip_posix_poll_worker(void *arg __unused)
 
 		uk_semaphore_down(&lwip_poll_available);
 		SYS_ARCH_PROTECT(lev);
-		UK_ASSERT(!uk_list_empty(&lwip_poll_pending));
+		/* close() may have dequeued the entry of this wakeup */
+		if (uk_list_empty(&lwip_poll_pending)) {
+			SYS_ARCH_UNPROTECT(lev);
+			continue;
+		}
 		state = uk_list_first_entry(&lwip_poll_pending,
 					    struct lwip_posix_socket, pending);
 		uk_list_del_init(&state->pending);
@@ -610,7 +620,7 @@ static void lwip_posix_poll_worker(void *arg __unused)
 		SYS_ARCH_UNPROTECT(lev);
 
 		posix_sock_event_notify(file, levels, edges);
-		uk_file_release(file);
+		uk_file_release_weak(file);
 	}
 }
 
@@ -663,9 +673,11 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 		state->pending_edges |= edges;
 		return;
 	}
-	if (!uk_file_try_acquire(file))
-		return;
-
+	/* A weak reference keeps the file object valid for the poll worker
+	 * without delaying the final close and the finalizers that run with
+	 * it, e.g. the removal of the file from epoll sets.
+	 */
+	uk_file_acquire_weak(file);
 	state->pending_edges = edges;
 	uk_list_add_tail(&state->pending, &lwip_poll_pending);
 	uk_semaphore_up_isr(&lwip_poll_available);
