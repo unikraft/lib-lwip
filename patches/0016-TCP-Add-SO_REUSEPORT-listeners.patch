@@ -1,0 +1,195 @@
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -2914,6 +2914,13 @@
+     case SOL_SOCKET:
+       switch (optname) {
+
++#if LWIP_TCP && SO_REUSE
++        case SO_REUSEPORT:
++          LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB_TYPE(sock, *optlen, int, NETCONN_TCP);
++          *(int *)optval = !!ip_get_option(sock->conn->pcb.tcp, SOF_REUSEPORT);
++          *optlen = sizeof(int);
++          break;
++#endif /* LWIP_TCP && SO_REUSE */
+ #if LWIP_TCP
+         case SO_ACCEPTCONN:
+           LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB(sock, *optlen, int);
+@@ -3335,6 +3342,27 @@
+     case SOL_SOCKET:
+       switch (optname) {
+
++#if LWIP_TCP && SO_REUSE
++        case SO_REUSEPORT: {
++          int enabled;
++          struct tcp_pcb *pcb;
++
++          LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB_TYPE(sock, optlen, int, NETCONN_TCP);
++          pcb = sock->conn->pcb.tcp;
++          enabled = (*(const int *)optval != 0);
++          if ((pcb->local_port != 0) &&
++              (enabled != !!ip_get_option(pcb, SOF_REUSEPORT))) {
++            done_socket(sock);
++            return EINVAL;
++          }
++          if (enabled) {
++            ip_set_option(pcb, SOF_REUSEPORT);
++          } else {
++            ip_reset_option(pcb, SOF_REUSEPORT);
++          }
++          break;
++        }
++#endif /* LWIP_TCP && SO_REUSE */
+         /* SO_ACCEPTCONN is get-only */
+
+         /* The option flags */
+--- a/src/core/tcp.c
++++ b/src/core/tcp.c
+@@ -717,6 +717,10 @@
+       for (cpcb = *tcp_pcb_lists[i]; cpcb != NULL; cpcb = cpcb->next) {
+         if (cpcb->local_port == port) {
+ #if SO_REUSE
++          if (ip_get_option(pcb, SOF_REUSEPORT) &&
++              ip_get_option(cpcb, SOF_REUSEPORT)) {
++            continue;
++          }
+           /* Omit checking for the same port if both pcbs have REUSEADDR set.
+              For SO_REUSEADDR, the duplicate-check for a 5-tuple is done in
+              tcp_connect. */
+@@ -865,13 +869,13 @@
+     goto done;
+   }
+ #if SO_REUSE
+-  if (ip_get_option(pcb, SOF_REUSEADDR)) {
+-    /* Since SOF_REUSEADDR allows reusing a local address before the pcb's usage
+-       is declared (listen-/connection-pcb), we have to make sure now that
+-       this port is only used once for every local IP. */
++  if (ip_get_option(pcb, SOF_REUSEADDR | SOF_REUSEPORT)) {
++    /* Only listeners which all enabled REUSEPORT may share an endpoint. */
+     for (lpcb = tcp_listen_pcbs.listen_pcbs; lpcb != NULL; lpcb = lpcb->next) {
+       if ((lpcb->local_port == pcb->local_port) &&
+-          ip_addr_cmp(&lpcb->local_ip, &pcb->local_ip)) {
++          ip_addr_cmp(&lpcb->local_ip, &pcb->local_ip) &&
++          !(ip_get_option(pcb, SOF_REUSEPORT) &&
++            ip_get_option(lpcb, SOF_REUSEPORT))) {
+         /* this address/port is already used */
+         lpcb = NULL;
+         res = ERR_USE;
+@@ -1121,9 +1125,8 @@
+     }
+   } else {
+ #if SO_REUSE
+-    if (ip_get_option(pcb, SOF_REUSEADDR)) {
+-      /* Since SOF_REUSEADDR allows reusing a local address, we have to make sure
+-         now that the 5-tuple is unique. */
++    if (ip_get_option(pcb, SOF_REUSEADDR | SOF_REUSEPORT)) {
++      /* A reused local endpoint still requires a unique connection tuple. */
+       struct tcp_pcb *cpcb;
+       int i;
+       /* Don't check listen- and bound-PCBs, check active- and TIME-WAIT PCBs. */
+--- a/src/core/tcp_in.c
++++ b/src/core/tcp_in.c
+@@ -104,6 +104,76 @@
+ static void tcp_remove_sacks_gt(struct tcp_pcb *pcb, u32_t seq);
+ #endif /* TCP_OOSEQ_BYTES_LIMIT || TCP_OOSEQ_PBUFS_LIMIT */
+ #endif /* LWIP_TCP_SACK_OUT */
++
++#if SO_REUSE
++static u32_t
++tcp_reuseport_flow_hash(void)
++{
++  const ip_addr_t *src = ip_current_src_addr();
++  const ip_addr_t *dst = ip_current_dest_addr();
++  u32_t hash = ((u32_t)tcphdr->src << 16) | tcphdr->dest;
++
++#if LWIP_IPV6
++  if (IP_IS_V6(src)) {
++    int i;
++    for (i = 0; i < 4; i++) {
++      hash = (hash ^ ip_2_ip6(src)->addr[i]) * 16777619U;
++      hash = (hash ^ ip_2_ip6(dst)->addr[i]) * 16777619U;
++    }
++  }
++#endif /* LWIP_IPV6 */
++#if LWIP_IPV4
++  if (IP_IS_V4(src)) {
++    hash = (hash ^ ip4_addr_get_u32(ip_2_ip4(src))) * 16777619U;
++    hash = (hash ^ ip4_addr_get_u32(ip_2_ip4(dst))) * 16777619U;
++  }
++#endif /* LWIP_IPV4 */
++
++  hash = (hash ^ (hash >> 16)) * 0x85ebca6bU;
++  hash = (hash ^ (hash >> 13)) * 0xc2b2ae35U;
++  return hash ^ (hash >> 16);
++}
++
++static int
++tcp_reuseport_member(const struct tcp_pcb_listen *pcb,
++                     const struct tcp_pcb_listen *first)
++{
++  return ip_get_option(pcb, SOF_REUSEPORT) &&
++         (pcb->local_port == first->local_port) &&
++         (pcb->netif_idx == first->netif_idx) &&
++         ip_addr_cmp(&pcb->local_ip, &first->local_ip);
++}
++
++static struct tcp_pcb_listen *
++tcp_reuseport_select(struct tcp_pcb_listen *first)
++{
++  struct tcp_pcb_listen *pcb;
++  u32_t count = 0;
++  u32_t index;
++
++  for (pcb = tcp_listen_pcbs.listen_pcbs; pcb != NULL; pcb = pcb->next) {
++    if (tcp_reuseport_member(pcb, first)) {
++      count++;
++    }
++  }
++  if (count < 2) {
++    return first;
++  }
++
++  /* The core lock keeps membership and order stable across both scans. */
++  index = tcp_reuseport_flow_hash() % count;
++  for (pcb = tcp_listen_pcbs.listen_pcbs; pcb != NULL; pcb = pcb->next) {
++    if (!tcp_reuseport_member(pcb, first)) {
++      continue;
++    }
++    if (index == 0) {
++      return pcb;
++    }
++    index--;
++  }
++  return first;
++}
++#endif /* SO_REUSE */
+
+ /**
+  * The initial input processing of TCP. It verifies the TCP header, demultiplexes
+@@ -358,6 +428,13 @@
+     }
+ #endif /* SO_REUSE */
+     if (lpcb != NULL) {
++#if SO_REUSE
++      if (ip_get_option(lpcb, SOF_REUSEPORT)) {
++        if ((TCPH_FLAGS(tcphdr) & (TCP_SYN | TCP_ACK | TCP_RST)) == TCP_SYN) {
++          lpcb = tcp_reuseport_select(lpcb);
++        }
++      } else
++#endif /* SO_REUSE */
+       /* Move this PCB to the front of the list so that subsequent
+          lookups will be faster (we exploit locality in TCP segment
+          arrivals). */
+--- a/src/include/lwip/ip.h
++++ b/src/include/lwip/ip.h
+@@ -99,9 +99,10 @@
+ #define SOF_REUSEADDR     0x04U  /* allow local address reuse */
+ #define SOF_KEEPALIVE     0x08U  /* keep connections alive */
+ #define SOF_BROADCAST     0x20U  /* permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
++#define SOF_REUSEPORT     0x40U  /* share a TCP listening endpoint */
+
+ /* These flags are inherited (e.g. from a listen-pcb to a connection-pcb): */
+-#define SOF_INHERITED   (SOF_REUSEADDR|SOF_KEEPALIVE)
++#define SOF_INHERITED   (SOF_REUSEADDR|SOF_KEEPALIVE|SOF_REUSEPORT)
+
+ /** Global variables of this module, kept in a struct for efficient access using base+index. */
+ struct ip_globals
