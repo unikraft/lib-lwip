@@ -49,10 +49,9 @@
 #include <lwip/priv/sockets_priv.h>
 #include <lwip/api.h>
 #include <lwip/sys.h>
-#include <lwip/tcp.h>
-#include <lwip/tcpbase.h>
 
 #define LWIP_READ_EVENTS (EPOLLIN | EPOLLRDNORM)
+#define LWIP_WRITE_EVENTS (EPOLLOUT | EPOLLWRNORM)
 
 static inline
 int _lwip_ignore_noncrit_msgflags(int flags)
@@ -474,50 +473,57 @@ lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 	return ret;
 }
 
+#if LWIP_TCP
+static bool
+lwip_mailbox_has_data(struct netconn *conn __maybe_unused, sys_mbox_t *mbox,
+		      unsigned int blocked_flags __maybe_unused)
+{
+	if (!sys_mbox_valid(mbox))
+		return false;
 #if LWIP_NETCONN_FULLDUPLEX
-#define NETCONN_RECVMBOX_WAITABLE(conn)					\
-	(sys_mbox_valid(&(conn)->recvmbox) &&				\
-	 !netconn_is_flag_set((conn), NETCONN_FLAG_MBOXINVALID))
-#else /* LWIP_NETCONN_FULLDUPLEX */
-#define NETCONN_RECVMBOX_WAITABLE(conn)					\
-	sys_mbox_valid(&(conn)->recvmbox)
+	if (netconn_is_flag_set(conn, blocked_flags))
+		return false;
 #endif /* LWIP_NETCONN_FULLDUPLEX */
+	return !uk_mbox_is_empty(mbox->mbox);
+}
+#endif /* LWIP_TCP */
 
 static unsigned int
 get_lwip_socket_events(struct lwip_sock *sock)
 {
-	struct netconn *conn;
 	unsigned int events = 0;
-	bool readable;
+	bool readable, writable;
 
 	UK_ASSERT(sock);
-	conn = sock->conn;
 	readable = sock->lastdata.pbuf || sock->rcvevent > 0;
-	if (NETCONNTYPE_GROUP(conn->type) == NETCONN_TCP) {
-		bool waitable = NETCONN_RECVMBOX_WAITABLE(conn);
+	writable = sock->sendevent != 0;
+#if LWIP_TCP
+	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP) {
+		struct netconn *conn = sock->conn;
+		unsigned int state = conn->tcp_poll_state;
+		unsigned int invalid = NETCONN_FLAG_MBOXINVALID;
+		sys_mbox_t *mbox = &conn->recvmbox;
 
-		/* An unconnected socket cannot read or write. */
-		if (conn->state == NETCONN_NONE && !waitable)
-			return sock->errevent ? EPOLLERR : 0;
-
-		/* Reads after a received FIN can complete with EOF. */
-		if (!conn->pcb.tcp || conn->pcb.tcp->state == CLOSE_WAIT)
+		if (state & NETCONN_TCP_POLL_READ_CLOSED)
 			events |= EPOLLRDHUP;
-
-		/* Listening sockets count accept events separately. For a
-		 * stream, a receive event can outlive the data it signalled.
-		 */
-		if (conn->state != NETCONN_LISTEN)
-			readable = sock->lastdata.pbuf ||
-				   (events & EPOLLRDHUP) ||
-				   (waitable &&
-				    !uk_mbox_is_empty(conn->recvmbox.mbox));
+		if (state & NETCONN_TCP_POLL_LISTEN) {
+			invalid |= NETCONN_FLAG_MBOXCLOSED;
+			mbox = &conn->acceptmbox;
+			readable = false;
+		} else {
+			readable = sock->lastdata.pbuf || (events & EPOLLRDHUP);
+		}
+		if (!readable)
+			readable = lwip_mailbox_has_data(conn, mbox, invalid);
+		/* lwIP publishes its TCP send low-water state via sendevent. */
+		writable = writable && (state & NETCONN_TCP_POLL_WRITE_OPEN);
 	}
+#endif /* LWIP_TCP */
 
 	if (readable)
 		events |= LWIP_READ_EVENTS;
-	if (sock->sendevent != 0)
-		events |= EPOLLOUT | EPOLLWRNORM;
+	if (writable)
+		events |= LWIP_WRITE_EVENTS;
 	if (sock->errevent != 0)
 		events |= EPOLLERR;
 

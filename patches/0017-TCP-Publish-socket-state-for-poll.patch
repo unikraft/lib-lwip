@@ -1,0 +1,158 @@
+diff --git a/src/api/api_msg.c b/src/api/api_msg.c
+index b79a574..37390bc 100644
+--- a/src/api/api_msg.c
++++ b/src/api/api_msg.c
+@@ -335,6 +335,9 @@ recv_tcp(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err)
+ #if LWIP_SO_RCVBUF
+     SYS_ARCH_INC(conn->recv_avail, len);
+ #endif /* LWIP_SO_RCVBUF */
++    if (p == NULL) {
++      SYS_ARCH_LOCKED(conn->tcp_poll_state |= NETCONN_TCP_POLL_READ_CLOSED);
++    }
+     /* Register event with callback */
+     API_EVENT(conn, NETCONN_EVT_RCVPLUS, len);
+   }
+@@ -443,6 +446,7 @@ err_tcp(void *arg, err_t err)
+
+   /* when err is called, the pcb is deallocated, so delete the reference */
+   conn->pcb.tcp = NULL;
++  conn->tcp_poll_state = NETCONN_TCP_POLL_READ_CLOSED;
+   /* store pending error */
+   conn->pending_err = err;
+   /* prevent application threads from blocking on 'recvmbox'/'acceptmbox' */
+@@ -568,6 +572,7 @@ accept_function(void *arg, struct tcp_pcb *newpcb, err_t err)
+     return ERR_MEM;
+   }
+   newconn->pcb.tcp = newpcb;
++  SYS_ARCH_LOCKED(newconn->tcp_poll_state = NETCONN_TCP_POLL_WRITE_OPEN);
+   setup_tcp(newconn);
+
+   /* handle backlog counter */
+@@ -754,6 +759,7 @@ netconn_alloc(enum netconn_type t, netconn_callback callback)
+
+ #if LWIP_TCP
+   sys_mbox_set_invalid(&conn->acceptmbox);
++  conn->tcp_poll_state = 0;
+ #endif
+   conn->state        = NETCONN_NONE;
+ #if LWIP_SOCKET
+@@ -1060,6 +1066,18 @@ lwip_netconn_do_close_internal(struct netconn *conn  WRITE_DELAYED_PARAM)
+     conn->current_msg = NULL;
+     conn->state = NETCONN_NONE;
+     if (err == ERR_OK) {
++      SYS_ARCH_DECL_PROTECT(poll_state);
++      SYS_ARCH_PROTECT(poll_state);
++      if (shut_rx) {
++        conn->tcp_poll_state |= NETCONN_TCP_POLL_READ_CLOSED;
++      }
++      if (shut_tx) {
++        conn->tcp_poll_state &= (u8_t)~NETCONN_TCP_POLL_WRITE_OPEN;
++      }
++      if (shut_close) {
++        conn->tcp_poll_state &= (u8_t)~NETCONN_TCP_POLL_LISTEN;
++      }
++      SYS_ARCH_UNPROTECT(poll_state);
+       if (shut_close) {
+         /* Set back some callback pointers as conn is going away */
+         conn->pcb.tcp = NULL;
+@@ -1330,6 +1348,11 @@ lwip_netconn_do_connected(void *arg, struct tcp_pcb *pcb, err_t err)
+               (!was_blocking && op_completed_sem == NULL));
+   conn->current_msg = NULL;
+   conn->state = NETCONN_NONE;
++  SYS_ARCH_LOCKED(conn->tcp_poll_state = err == ERR_OK ?
++                  NETCONN_TCP_POLL_WRITE_OPEN : NETCONN_TCP_POLL_READ_CLOSED);
++  if (err != ERR_OK) {
++    API_EVENT(conn, NETCONN_EVT_ERROR, 0);
++  }
+   API_EVENT(conn, NETCONN_EVT_SENDPLUS, 0);
+
+   if (was_blocking) {
+@@ -1494,6 +1517,7 @@ lwip_netconn_do_listen(void *m)
+             }
+             if (err == ERR_OK) {
+               msg->conn->state = NETCONN_LISTEN;
++              SYS_ARCH_LOCKED(msg->conn->tcp_poll_state = NETCONN_TCP_POLL_LISTEN);
+               msg->conn->pcb.tcp = lpcb;
+               tcp_arg(msg->conn->pcb.tcp, msg->conn);
+               tcp_accept(msg->conn->pcb.tcp, accept_function);
+diff --git a/src/api/sockets.c b/src/api/sockets.c
+index ad48c5b..bf7a6bc 100644
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -970,7 +970,7 @@ lwip_recv_tcp(struct lwip_sock *sock, void *mem, size_t len, int flags)
+         }
+       }
+       LWIP_ASSERT("p != NULL", p != NULL);
+-      sock->lastdata.pbuf = p;
++      SYS_ARCH_LOCKED(sock->lastdata.pbuf = p);
+     }
+
+     LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recv_tcp: buflen=%"U16_F" recv_left=%d off=%d\n",
+@@ -1003,10 +1003,11 @@ lwip_recv_tcp(struct lwip_sock *sock, void *mem, size_t len, int flags)
+       if (p->tot_len - copylen > 0) {
+         /* If so, it should be saved in the sock structure for the next recv call.
+            We store the pbuf but hide/free the consumed data: */
+-        sock->lastdata.pbuf = pbuf_free_header(p, copylen);
+-        LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recv_tcp: lastdata now pbuf=%p\n", (void *)sock->lastdata.pbuf));
++        p = pbuf_free_header(p, copylen);
++        SYS_ARCH_LOCKED(sock->lastdata.pbuf = p);
++        LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recv_tcp: lastdata now pbuf=%p\n", (void *)p));
+       } else {
+-        sock->lastdata.pbuf = NULL;
++        SYS_ARCH_LOCKED(sock->lastdata.pbuf = NULL);
+         LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recv_tcp: deleting pbuf=%p\n", (void *)p));
+         pbuf_free(p);
+       }
+@@ -1123,7 +1124,7 @@ lwip_recvfrom_udp_raw(struct lwip_sock *sock, int flags, struct msghdr *msg, u16
+       return err;
+     }
+     LWIP_ASSERT("buf != NULL", buf != NULL);
+-    sock->lastdata.netbuf = buf;
++    SYS_ARCH_LOCKED(sock->lastdata.netbuf = buf);
+   }
+   buflen = buf->p->tot_len;
+   LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom_udp_raw: buflen=%"U16_F"\n", buflen));
+@@ -1193,7 +1194,7 @@ lwip_recvfrom_udp_raw(struct lwip_sock *sock, int flags, struct msghdr *msg, u16
+
+   /* If we don't peek the incoming message: zero lastdata pointer and free the netbuf */
+   if ((flags & MSG_PEEK) == 0) {
+-    sock->lastdata.netbuf = NULL;
++    SYS_ARCH_LOCKED(sock->lastdata.netbuf = NULL);
+     netbuf_delete(buf);
+   }
+   if (datagram_len) {
+@@ -3809,7 +3810,7 @@ lwip_ioctl(int s, long cmd, void *argp)
+           if (err != ERR_OK) {
+             *((int *)argp) = 0;
+           } else {
+-            sock->lastdata.netbuf = rxbuf;
++            SYS_ARCH_LOCKED(sock->lastdata.netbuf = rxbuf);
+             *((int *)argp) = rxbuf->p->tot_len;
+           }
+         }
+diff --git a/src/include/lwip/api.h b/src/include/lwip/api.h
+index e53d829..e45f0db 100644
+--- a/src/include/lwip/api.h
++++ b/src/include/lwip/api.h
+@@ -215,6 +215,13 @@ struct api_msg;
+ typedef void (* netconn_callback)(struct netconn *, enum netconn_evt, u16_t len);
+
+ /** A netconn descriptor */
++#if LWIP_TCP
++/* TCP state published to socket poll readers under SYS_ARCH_PROTECT. */
++#define NETCONN_TCP_POLL_LISTEN       0x01
++#define NETCONN_TCP_POLL_READ_CLOSED  0x02
++#define NETCONN_TCP_POLL_WRITE_OPEN   0x04
++#endif
++
+ struct netconn {
+   /** type of the netconn (TCP, UDP or RAW) */
+   enum netconn_type type;
+@@ -276,6 +283,7 @@ struct netconn {
+   /** flags holding more netconn-internal state, see NETCONN_FLAG_* defines */
+   u8_t flags;
+ #if LWIP_TCP
++  u8_t tcp_poll_state;
+   /** TCP: when data passed to netconn_write doesn't fit into the send buffer,
+       this temporarily stores the message.
+       Also used during connect and close. */
