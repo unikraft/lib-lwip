@@ -52,6 +52,8 @@
 #include <lwip/tcp.h>
 #include <lwip/tcpbase.h>
 
+#define LWIP_READ_EVENTS (EPOLLIN | EPOLLRDNORM)
+
 static inline
 int _lwip_ignore_noncrit_msgflags(int flags)
 {
@@ -305,6 +307,8 @@ lwip_posix_socket_listen(posix_sock *file, int backlog)
 	return ret;
 }
 
+static void lwip_posix_socket_refresh_read(const struct uk_file *file);
+
 static ssize_t
 lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 			   size_t len, int flags, struct sockaddr *from,
@@ -321,6 +325,9 @@ lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 	ret = lwip_recvfrom(lwip_fd, buf, len, flags, from, fromlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
+
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
 
 	return ret;
 }
@@ -340,6 +347,9 @@ lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 	ret = lwip_recvmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
+
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
 
 	return ret;
 }
@@ -397,6 +407,9 @@ lwip_posix_socket_read(posix_sock *file, const struct iovec *iov,
 	ret = lwip_readv(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
+
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
 
 	return ret;
 }
@@ -473,40 +486,56 @@ lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 static unsigned int
 get_lwip_socket_events(struct lwip_sock *sock)
 {
+	struct netconn *conn;
 	unsigned int events = 0;
+	bool readable;
 
 	UK_ASSERT(sock);
+	conn = sock->conn;
+	readable = sock->lastdata.pbuf || sock->rcvevent > 0;
+	if (NETCONNTYPE_GROUP(conn->type) == NETCONN_TCP) {
+		bool waitable = NETCONN_RECVMBOX_WAITABLE(conn);
 
-	if ((NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP)) {
-		/* A TCP connection may be in not-connected state. Don't report it as
-		 * readable or writeable.
-		 */
-		if ((sock->conn->state == NETCONN_NONE) &&
-		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn))) {
-			if (sock->errevent != 0)
-				events |= EPOLLERR;
+		/* An unconnected socket cannot read or write. */
+		if (conn->state == NETCONN_NONE && !waitable)
+			return sock->errevent ? EPOLLERR : 0;
 
-			return events;
-		}
-
-                /* Check whether the TCP connection is in CLOSE_WAIT (= got a
-                 * FIN packet). In that case the peer will not sent more data
-                 * and we can tell the application that the receive buffer is
-                 * everything we got until the EOF.
-                 */
-                if (sock->conn->pcb.tcp == NULL ||
-		    sock->conn->pcb.tcp->state == CLOSE_WAIT)
+		/* Reads after a received FIN can complete with EOF. */
+		if (!conn->pcb.tcp || conn->pcb.tcp->state == CLOSE_WAIT)
 			events |= EPOLLRDHUP;
+
+		/* Listening sockets count accept events separately. For a
+		 * stream, a receive event can outlive the data it signalled.
+		 */
+		if (conn->state != NETCONN_LISTEN)
+			readable = sock->lastdata.pbuf ||
+				   (events & EPOLLRDHUP) ||
+				   (waitable &&
+				    !uk_mbox_is_empty(conn->recvmbox.mbox));
 	}
 
-	if (sock->lastdata.pbuf || sock->rcvevent > 0)
-		events |= EPOLLIN | EPOLLRDNORM;
+	if (readable)
+		events |= LWIP_READ_EVENTS;
 	if (sock->sendevent != 0)
 		events |= EPOLLOUT | EPOLLWRNORM;
 	if (sock->errevent != 0)
 		events |= EPOLLERR;
 
 	return events;
+}
+
+static void lwip_posix_socket_refresh_read(const struct uk_file *file)
+{
+	struct lwip_posix_socket *state;
+	struct lwip_sock *sock;
+
+	SYS_ARCH_DECL_PROTECT(lev);
+	SYS_ARCH_PROTECT(lev);
+	state = posix_sock_get_data(file);
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	if (!(get_lwip_socket_events(sock) & EPOLLIN))
+		state->last_events &= ~LWIP_READ_EVENTS;
+	SYS_ARCH_UNPROTECT(lev);
 }
 
 static void lwip_posix_poll_worker(void *arg __unused)
