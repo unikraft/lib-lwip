@@ -639,9 +639,20 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 				   __ATOMIC_RELAXED);
 	events = get_lwip_socket_events(sock);
 	edges = events & ~state->last_events;
-	/* New receive events can arrive while the socket is still readable. */
-	if (evt == NETCONN_EVT_RCVPLUS)
-		edges |= events & LWIP_READ_EVENTS;
+	/* New TCP activity can be reportable while a level stays high. */
+	switch (evt) {
+	case NETCONN_EVT_RCVPLUS:
+		edges |= events & (LWIP_READ_EVENTS | EPOLLRDHUP);
+		break;
+	case NETCONN_EVT_SENDPLUS:
+		edges |= events & LWIP_WRITE_EVENTS;
+		break;
+	case NETCONN_EVT_ERROR:
+		edges |= events & EPOLLERR;
+		break;
+	default:
+		break;
+	}
 	state->last_events = events;
 	/* Blocking waiters also need to see the current readiness level. */
 	if (!edges && (!events || evt == NETCONN_EVT_RCVMINUS ||
