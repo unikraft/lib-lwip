@@ -586,12 +586,11 @@ lwip_posix_socket_event_callback(struct lwip_sock *sock,
 	state = posix_sock_get_data(file);
 	events = get_lwip_socket_events(sock);
 	edges = events & ~state->last_events;
+	/* New receive events can arrive while the socket is still readable. */
+	if (evt == NETCONN_EVT_RCVPLUS)
+		edges |= events & LWIP_READ_EVENTS;
 	state->last_events = events;
-	/*
-	 * A blocking waiter needs a level notification on a readiness gain,
-	 * including when a buffered read drained between callbacks. Only
-	 * `edges` are sent to epoll.
-	 */
+	/* Blocking waiters also need to see the current readiness level. */
 	if (!edges && (!events || evt == NETCONN_EVT_RCVMINUS ||
 		       evt == NETCONN_EVT_SENDMINUS))
 		return;
