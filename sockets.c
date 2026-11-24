@@ -38,6 +38,10 @@
 #include <uk/print.h>
 #include <uk/essentials.h>
 #include <uk/socket_driver.h>
+#include <uk/alloc.h>
+#include <uk/init.h>
+#include <uk/isr/semaphore.h>
+#include <uk/list.h>
 
 #include <lwip/sockets.h>
 #include <sys/socket.h>
@@ -45,8 +49,9 @@
 #include <lwip/priv/sockets_priv.h>
 #include <lwip/api.h>
 #include <lwip/sys.h>
-#include <lwip/tcp.h>
-#include <lwip/tcpbase.h>
+
+#define LWIP_READ_EVENTS (EPOLLIN | EPOLLRDNORM)
+#define LWIP_WRITE_EVENTS (EPOLLOUT | EPOLLWRNORM)
 
 static inline
 int _lwip_ignore_noncrit_msgflags(int flags)
@@ -54,10 +59,50 @@ int _lwip_ignore_noncrit_msgflags(int flags)
 	return flags & ~(MSG_NOSIGNAL);
 }
 
+/* Pending notifications are protected by SYS_ARCH_PROTECT.
+ * A queued entry owns a file reference until notification completes.
+ */
+struct lwip_posix_socket {
+	int fd;
+	posix_sock *file;
+	struct uk_list_head pending;
+	unsigned int last_events;
+	unsigned int pending_edges;
+	unsigned int write_generation;
+};
+
+static UK_LIST_HEAD(lwip_poll_pending);
+static struct uk_semaphore lwip_poll_available;
+
+static void lwip_posix_socket_refresh_read(const struct uk_file *file);
+static void lwip_refresh_write(posix_sock *file, unsigned int generation);
+
 static inline
 int _lwip_getfd(posix_sock *sock)
 {
-	return (intptr_t)posix_sock_get_data(sock);
+	struct lwip_posix_socket *state = posix_sock_get_data(sock);
+
+	return state->fd;
+}
+
+static unsigned int lwip_write_generation(posix_sock *file)
+{
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
+
+	return __atomic_load_n(&state->write_generation, __ATOMIC_RELAXED);
+}
+
+static void *lwip_posix_socket_alloc(struct uk_alloc *allocator, int fd)
+{
+	struct lwip_posix_socket *state = uk_calloc(allocator, 1, sizeof(*state));
+
+	if (unlikely(!state)) {
+		(void)lwip_close(fd);
+		return ERR2PTR(-ENOMEM);
+	}
+	state->fd = fd;
+	UK_INIT_LIST_HEAD(&state->pending);
+	return state;
 }
 
 static int
@@ -98,7 +143,7 @@ lwip_posix_socket_create(struct posix_socket_driver *d, int family, int type,
 		return ERR2PTR(rc);
 	}
 
-	return (void *)(intptr_t)lwip_fd;
+	return lwip_posix_socket_alloc(d->allocator, lwip_fd);
 }
 
 static void *
@@ -113,8 +158,12 @@ lwip_posix_socket_accept4(posix_sock *file,
 	UK_ASSERT(listen_fd >= 0);
 
 	new_fd = lwip_accept(listen_fd, addr, addr_len);
-	if (unlikely(new_fd < 0))
-		return ERR2PTR(-errno);
+	if (unlikely(new_fd < 0)) {
+		rc = -errno;
+		if (rc == -EAGAIN || rc == -EWOULDBLOCK)
+			lwip_posix_socket_refresh_read(file);
+		return ERR2PTR(rc);
+	}
 
 	rc = lwip_socket_apply_flags(new_fd, flags);
 	if (unlikely(rc)) {
@@ -122,7 +171,8 @@ lwip_posix_socket_accept4(posix_sock *file,
 		return ERR2PTR(rc);
 	}
 
-	return (void *)(intptr_t)new_fd;
+	return lwip_posix_socket_alloc(posix_sock_get_driver(file)->allocator,
+				       new_fd);
 }
 
 static int
@@ -288,6 +338,9 @@ lwip_posix_socket_recvfrom(posix_sock *file, void *restrict buf,
 	if (unlikely(ret < 0))
 		ret = -errno;
 
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
+
 	return ret;
 }
 
@@ -307,6 +360,9 @@ lwip_posix_socket_recvmsg(posix_sock *file, struct msghdr *msg,
 	if (unlikely(ret < 0))
 		ret = -errno;
 
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
+
 	return ret;
 }
 
@@ -314,6 +370,7 @@ static ssize_t
 lwip_posix_socket_sendmsg(posix_sock *file,
 			  const struct msghdr *msg, int flags)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -324,6 +381,8 @@ lwip_posix_socket_sendmsg(posix_sock *file,
 	ret = lwip_sendmsg(lwip_fd, msg, flags);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -334,6 +393,7 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			 const struct sockaddr *dest_addr,
 			 socklen_t addrlen)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -346,6 +406,8 @@ lwip_posix_socket_sendto(posix_sock *file, const void *buf,
 			  dest_addr, addrlen);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -364,6 +426,9 @@ lwip_posix_socket_read(posix_sock *file, const struct iovec *iov,
 	if (unlikely(ret < 0))
 		ret = -errno;
 
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_posix_socket_refresh_read(file);
+
 	return ret;
 }
 
@@ -371,6 +436,7 @@ static ssize_t
 lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 			size_t iovcnt)
 {
+	unsigned int generation = lwip_write_generation(file);
 	int lwip_fd;
 	ssize_t ret;
 
@@ -380,6 +446,8 @@ lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 	ret = lwip_writev(lwip_fd, iov, iovcnt);
 	if (unlikely(ret < 0))
 		ret = -errno;
+	if (ret == -EAGAIN || ret == -EWOULDBLOCK)
+		lwip_refresh_write(file, generation);
 
 	return ret;
 }
@@ -387,16 +455,33 @@ lwip_posix_socket_write(posix_sock *file, const struct iovec *iov,
 static int
 lwip_posix_socket_close(posix_sock *file)
 {
-	int lwip_fd;
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
+	struct uk_alloc *allocator = posix_sock_get_driver(file)->allocator;
+	struct lwip_sock *sock;
+	SYS_ARCH_DECL_PROTECT(lev);
+	int queued;
 	int ret;
 
-	lwip_fd = _lwip_getfd(file);
-	UK_ASSERT(lwip_fd >= 0);
+	/* Disconnect the callback before releasing the lwIP descriptor. A
+	 * queued notification holds only a weak reference, so it does not
+	 * delay the final close. Take it off the queue and drop its reference.
+	 */
+	SYS_ARCH_PROTECT(lev);
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	if (sock && sock->sock_data == file)
+		sock->sock_data = NULL;
+	queued = !uk_list_empty(&state->pending);
+	if (queued)
+		uk_list_del_init(&state->pending);
+	posix_sock_set_data(file, NULL);
+	SYS_ARCH_UNPROTECT(lev);
 
-	ret = lwip_close(lwip_fd);
+	ret = lwip_close(state->fd);
 	if (unlikely(ret < 0))
 		ret = -errno;
-
+	uk_free(allocator, state);
+	if (queued)
+		uk_file_release_weak(file);
 	return ret;
 }
 
@@ -416,96 +501,214 @@ lwip_posix_socket_ioctl(posix_sock *file, int request, void *argp)
 	return ret;
 }
 
+#if LWIP_TCP
+static bool
+lwip_mailbox_has_data(struct netconn *conn, sys_mbox_t *mbox,
+		      unsigned int blocked_flags)
+{
+	if (!sys_mbox_valid(mbox))
+		return false;
 #if LWIP_NETCONN_FULLDUPLEX
-#define NETCONN_RECVMBOX_WAITABLE(conn)					\
-	(sys_mbox_valid(&(conn)->recvmbox) &&				\
-	 (((conn)->flags & NETCONN_FLAG_MBOXINVALID) == 0))
-#else /* LWIP_NETCONN_FULLDUPLEX */
-#define NETCONN_RECVMBOX_WAITABLE(conn)					\
-	sys_mbox_valid(&(conn)->recvmbox)
+	blocked_flags |= NETCONN_FLAG_MBOXINVALID;
 #endif /* LWIP_NETCONN_FULLDUPLEX */
+	if (netconn_is_flag_set(conn, blocked_flags))
+		return false;
+	return !uk_mbox_is_empty(mbox->mbox);
+}
+#endif /* LWIP_TCP */
 
 static unsigned int
 get_lwip_socket_events(struct lwip_sock *sock)
 {
 	unsigned int events = 0;
+	bool readable, writable;
 
 	UK_ASSERT(sock);
+	readable = sock->lastdata.pbuf || sock->rcvevent > 0;
+	writable = sock->sendevent != 0;
+#if LWIP_TCP
+	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP) {
+		struct netconn *conn = sock->conn;
+		unsigned int state = conn->tcp_poll_state;
+		unsigned int invalid = 0;
+		sys_mbox_t *mbox = &conn->recvmbox;
 
-	if ((NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP)) {
-		/* A TCP connection may be in not-connected state. Don't report it as
-		 * readable or writeable.
-		 */
-		if ((sock->conn->state == NETCONN_NONE) &&
-		    (!NETCONN_RECVMBOX_WAITABLE(sock->conn))) {
-			if (sock->errevent != 0)
-				events |= EPOLLERR;
-
-			return events;
-		}
-
-                /* Check whether the TCP connection is in CLOSE_WAIT (= got a
-                 * FIN packet). In that case the peer will not sent more data
-                 * and we can tell the application that the receive buffer is
-                 * everything we got until the EOF.
-                 */
-                if (sock->conn->pcb.tcp == NULL ||
-		    sock->conn->pcb.tcp->state == CLOSE_WAIT)
+		if (state & NETCONN_TCP_POLL_READ_CLOSED)
 			events |= EPOLLRDHUP;
+		if (state & NETCONN_TCP_POLL_LISTEN) {
+			invalid = NETCONN_FLAG_MBOXCLOSED;
+			mbox = &conn->acceptmbox;
+			readable = false;
+		} else {
+			readable = sock->lastdata.pbuf || (events & EPOLLRDHUP);
+		}
+		if (!readable)
+			readable = lwip_mailbox_has_data(conn, mbox, invalid);
+		/* lwIP publishes its TCP send low-water state via sendevent. */
+		writable = writable && (state & NETCONN_TCP_POLL_WRITE_OPEN);
 	}
+#endif /* LWIP_TCP */
 
-	if (sock->lastdata.pbuf || sock->rcvevent > 0)
-		events |= EPOLLIN | EPOLLRDNORM;
-	if (sock->sendevent != 0)
-		events |= EPOLLOUT | EPOLLWRNORM;
+	if (readable)
+		events |= LWIP_READ_EVENTS;
+	if (writable)
+		events |= LWIP_WRITE_EVENTS;
 	if (sock->errevent != 0)
 		events |= EPOLLERR;
 
 	return events;
 }
 
-void
-lwip_posix_socket_event_callback(struct lwip_sock *sock,
-				 enum netconn_evt evt __unused,
-				 u16_t len __unused)
+static void lwip_posix_socket_refresh_read(const struct uk_file *file)
 {
-	posix_sock *sockobj;
-	unsigned int events;
+	struct lwip_posix_socket *state;
+	struct lwip_sock *sock;
 
-	UK_ASSERT(sock);
-	if (unlikely(!sock->sock_data))
-		return;
-
-	sockobj = (posix_sock *)sock->sock_data;
-	UK_ASSERT(_lwip_getfd(sockobj) == sock->conn->socket);
-
-	events = get_lwip_socket_events(sock);
-	posix_sock_event_assign(sockobj, events);
+	SYS_ARCH_DECL_PROTECT(lev);
+	SYS_ARCH_PROTECT(lev);
+	state = posix_sock_get_data(file);
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	if (!(get_lwip_socket_events(sock) & EPOLLIN)) {
+		state->last_events &= ~LWIP_READ_EVENTS;
+		state->pending_edges &= ~LWIP_READ_EVENTS;
+	}
+	SYS_ARCH_UNPROTECT(lev);
 }
 
-static void
-lwip_posix_socket_poll_setup(posix_sock *file)
+static void lwip_refresh_write(posix_sock *file, unsigned int generation)
 {
-	int lwip_fd;
-	unsigned revents;
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
+	struct lwip_sock *sock;
+
+	SYS_ARCH_DECL_PROTECT(lev);
+
+	SYS_ARCH_PROTECT(lev);
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	/* A SENDPLUS after the send started may have restored readiness. */
+	if (NETCONNTYPE_GROUP(sock->conn->type) == NETCONN_TCP &&
+	    generation == lwip_write_generation(file)) {
+		netconn_set_flags(sock->conn, NETCONN_FLAG_CHECK_WRITESPACE);
+		sock->sendevent = 0;
+		state->last_events &= ~LWIP_WRITE_EVENTS;
+		state->pending_edges &= ~LWIP_WRITE_EVENTS;
+	}
+	SYS_ARCH_UNPROTECT(lev);
+}
+
+static void lwip_posix_poll_worker(void *arg __unused)
+{
+	for (;;) {
+		struct lwip_posix_socket *state;
+		unsigned int levels, edges;
+		posix_sock *file;
+		SYS_ARCH_DECL_PROTECT(lev);
+
+		uk_semaphore_down(&lwip_poll_available);
+		SYS_ARCH_PROTECT(lev);
+		/* close() may have dequeued the entry of this wakeup */
+		if (uk_list_empty(&lwip_poll_pending)) {
+			SYS_ARCH_UNPROTECT(lev);
+			continue;
+		}
+		state = uk_list_first_entry(&lwip_poll_pending,
+					    struct lwip_posix_socket, pending);
+		uk_list_del_init(&state->pending);
+		file = state->file;
+		levels = state->last_events;
+		edges = state->pending_edges;
+		state->pending_edges = 0;
+		SYS_ARCH_UNPROTECT(lev);
+
+		posix_sock_event_notify(file, levels, edges);
+		uk_file_release_weak(file);
+	}
+}
+
+static int lwip_posix_poll_start(struct uk_init_ctx *ctx __unused)
+{
+	uk_semaphore_init(&lwip_poll_available, 0);
+	if (!sys_thread_new("lwip-poll", lwip_posix_poll_worker, NULL, 0, 0))
+		return -ENOMEM;
+	return 0;
+}
+
+uk_lib_initcall(lwip_posix_poll_start, 0);
+
+void
+lwip_posix_socket_event_callback(struct lwip_sock *sock,
+				 enum netconn_evt evt, u16_t len __unused)
+{
+	struct lwip_posix_socket *state;
+	posix_sock *file = sock->sock_data;
+	unsigned int events, edges;
+
+	if (!file)
+		return;
+	state = posix_sock_get_data(file);
+	if (evt == NETCONN_EVT_SENDPLUS)
+		__atomic_add_fetch(&state->write_generation, 1,
+				   __ATOMIC_RELAXED);
+	events = get_lwip_socket_events(sock);
+	edges = events & ~state->last_events;
+	/* New TCP activity can be reportable while a level stays high. */
+	switch (evt) {
+	case NETCONN_EVT_RCVPLUS:
+		edges |= events & (LWIP_READ_EVENTS | EPOLLRDHUP);
+		break;
+	case NETCONN_EVT_SENDPLUS:
+		edges |= events & LWIP_WRITE_EVENTS;
+		break;
+	case NETCONN_EVT_ERROR:
+		edges |= events & EPOLLERR;
+		break;
+	default:
+		break;
+	}
+	state->last_events = events;
+	/* Blocking waiters also need to see the current readiness level. */
+	if (!edges && (!events || evt == NETCONN_EVT_RCVMINUS ||
+		       evt == NETCONN_EVT_SENDMINUS))
+		return;
+	if (!uk_list_empty(&state->pending)) {
+		state->pending_edges |= edges;
+		return;
+	}
+	/* A weak reference keeps the file object valid for the poll worker
+	 * without delaying the final close and the finalizers that run with
+	 * it, e.g. the removal of the file from epoll sets.
+	 */
+	uk_file_acquire_weak(file);
+	state->pending_edges = edges;
+	uk_list_add_tail(&state->pending, &lwip_poll_pending);
+	uk_semaphore_up_isr(&lwip_poll_available);
+}
+
+static unsigned int lwip_posix_socket_poll(posix_sock *file, unsigned int mask)
+{
+	struct lwip_posix_socket *state;
+	unsigned int events = 0;
+	SYS_ARCH_DECL_PROTECT(lev);
+
+	SYS_ARCH_PROTECT(lev);
+	state = posix_sock_get_data(file);
+	if (state)
+		events = get_lwip_socket_events(lwip_socket_dbg_get_socket(state->fd));
+	SYS_ARCH_UNPROTECT(lev);
+	return events & mask;
+}
+
+static void lwip_posix_socket_poll_setup(posix_sock *file)
+{
+	struct lwip_posix_socket *state = posix_sock_get_data(file);
 	struct lwip_sock *sock;
 	SYS_ARCH_DECL_PROTECT(lev);
 
-	lwip_fd = _lwip_getfd(file);
-
 	SYS_ARCH_PROTECT(lev);
-	/* This is a bit hacky but lwip does not provide a different public
-	 * interface to get a reference to the socket. Furthermore, this
-	 * function does not increase the reference count which is good
-	 * as we do not hold the reference longer than the lock anyways. Since
-	 * we need to hold the lock for evaluating the socket state this fits
-	 * in well.
-	 */
-	sock = lwip_socket_dbg_get_socket(lwip_fd);
-	revents = get_lwip_socket_events(sock);
-	sock->sock_data = (void *)file;
+	sock = lwip_socket_dbg_get_socket(state->fd);
+	state->last_events = get_lwip_socket_events(sock);
+	state->file = file;
+	sock->sock_data = file;
 	SYS_ARCH_UNPROTECT(lev);
-	posix_sock_event_assign(file, revents);
 }
 
 static struct posix_socket_ops lwip_posix_socket_ops = {
@@ -529,6 +732,7 @@ static struct posix_socket_ops lwip_posix_socket_ops = {
 	.write		= lwip_posix_socket_write,
 	.close		= lwip_posix_socket_close,
 	.ioctl		= lwip_posix_socket_ioctl,
+	.poll		= lwip_posix_socket_poll,
 	.poll_setup	= lwip_posix_socket_poll_setup,
 };
 

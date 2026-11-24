@@ -1,0 +1,240 @@
+diff --git a/src/api/api_lib.c b/src/api/api_lib.c
+index ffa14d6..244d931 100644
+--- a/src/api/api_lib.c
++++ b/src/api/api_lib.c
+@@ -92,13 +92,19 @@
+ #endif /* TCP_LISTEN_BACKLOG */
+ 
+ #if LWIP_NETCONN_FULLDUPLEX
+-#define NETCONN_RECVMBOX_WAITABLE(conn) (sys_mbox_valid(&(conn)->recvmbox) && (((conn)->flags & NETCONN_FLAG_MBOXINVALID) == 0))
+-#define NETCONN_ACCEPTMBOX_WAITABLE(conn) (sys_mbox_valid(&(conn)->acceptmbox) && (((conn)->flags & (NETCONN_FLAG_MBOXCLOSED|NETCONN_FLAG_MBOXINVALID)) == 0))
++#define NETCONN_RECVMBOX_WAITABLE(conn) (\
++  sys_mbox_valid(&(conn)->recvmbox) && \
++  !netconn_is_flag_set((conn), NETCONN_FLAG_MBOXINVALID))
++#define NETCONN_ACCEPTMBOX_WAITABLE(conn) (\
++  sys_mbox_valid(&(conn)->acceptmbox) && \
++  !netconn_is_flag_set((conn), NETCONN_FLAG_MBOXCLOSED|NETCONN_FLAG_MBOXINVALID))
+ #define NETCONN_MBOX_WAITING_INC(conn) SYS_ARCH_INC(conn->mbox_threads_waiting, 1)
+ #define NETCONN_MBOX_WAITING_DEC(conn) SYS_ARCH_DEC(conn->mbox_threads_waiting, 1)
+ #else /* LWIP_NETCONN_FULLDUPLEX */
+ #define NETCONN_RECVMBOX_WAITABLE(conn)   sys_mbox_valid(&(conn)->recvmbox)
+-#define NETCONN_ACCEPTMBOX_WAITABLE(conn) (sys_mbox_valid(&(conn)->acceptmbox) && (((conn)->flags & NETCONN_FLAG_MBOXCLOSED) == 0))
++#define NETCONN_ACCEPTMBOX_WAITABLE(conn) (\
++  sys_mbox_valid(&(conn)->acceptmbox) && \
++  !netconn_is_flag_set((conn), NETCONN_FLAG_MBOXCLOSED))
+ #define NETCONN_MBOX_WAITING_INC(conn)
+ #define NETCONN_MBOX_WAITING_DEC(conn)
+ #endif /* LWIP_NETCONN_FULLDUPLEX */
+@@ -240,7 +246,7 @@ netconn_delete(struct netconn *conn)
+   }
+ 
+ #if LWIP_NETCONN_FULLDUPLEX
+-  if (conn->flags & NETCONN_FLAG_MBOXINVALID) {
++  if (netconn_is_flag_set(conn, NETCONN_FLAG_MBOXINVALID)) {
+     /* Already called netconn_prepare_delete() before */
+     err = ERR_OK;
+   } else
+@@ -518,7 +524,7 @@ netconn_accept(struct netconn *conn, struct netconn **new_conn)
+   }
+   NETCONN_MBOX_WAITING_DEC(conn);
+ #if LWIP_NETCONN_FULLDUPLEX
+-  if (conn->flags & NETCONN_FLAG_MBOXINVALID) {
++  if (netconn_is_flag_set(conn, NETCONN_FLAG_MBOXINVALID)) {
+     if (lwip_netconn_is_deallocated_msg(accept_ptr)) {
+       /* the netconn has been closed from another thread */
+       API_MSG_VAR_FREE_ACCEPT(msg);
+@@ -596,7 +602,7 @@ netconn_recv_data(struct netconn *conn, void **new_buf, u8_t apiflags)
+ 
+   NETCONN_MBOX_WAITING_INC(conn);
+   if (netconn_is_nonblocking(conn) || (apiflags & NETCONN_DONTBLOCK) ||
+-      (conn->flags & NETCONN_FLAG_MBOXCLOSED) || (conn->pending_err != ERR_OK)) {
++      netconn_is_flag_set(conn, NETCONN_FLAG_MBOXCLOSED) || (conn->pending_err != ERR_OK)) {
+     if (sys_arch_mbox_tryfetch(&conn->recvmbox, &buf) == SYS_MBOX_EMPTY) {
+       err_t err;
+       NETCONN_MBOX_WAITING_DEC(conn);
+@@ -605,7 +611,7 @@ netconn_recv_data(struct netconn *conn, void **new_buf, u8_t apiflags)
+         /* return pending error */
+         return err;
+       }
+-      if (conn->flags & NETCONN_FLAG_MBOXCLOSED) {
++      if (netconn_is_flag_set(conn, NETCONN_FLAG_MBOXCLOSED)) {
+         return ERR_CONN;
+       }
+       return ERR_WOULDBLOCK;
+@@ -622,7 +628,7 @@ netconn_recv_data(struct netconn *conn, void **new_buf, u8_t apiflags)
+   }
+   NETCONN_MBOX_WAITING_DEC(conn);
+ #if LWIP_NETCONN_FULLDUPLEX
+-  if (conn->flags & NETCONN_FLAG_MBOXINVALID) {
++  if (netconn_is_flag_set(conn, NETCONN_FLAG_MBOXINVALID)) {
+     if (lwip_netconn_is_deallocated_msg(buf)) {
+       /* the netconn has been closed from another thread */
+       API_MSG_VAR_FREE_ACCEPT(msg);
+@@ -713,8 +719,7 @@ netconn_recv_data_tcp(struct netconn *conn, struct pbuf **new_buf, u8_t apiflags
+     /* This only happens when calling this function more than once *after* receiving FIN */
+     return ERR_CONN;
+   }
+-  if (netconn_is_flag_set(conn, NETCONN_FIN_RX_PENDING)) {
+-    netconn_clear_flags(conn, NETCONN_FIN_RX_PENDING);
++  if (netconn_take_flags(conn, NETCONN_FIN_RX_PENDING)) {
+     goto handle_fin;
+   }
+ 
+diff --git a/src/api/api_msg.c b/src/api/api_msg.c
+index 3f08e03..6d825ea 100644
+--- a/src/api/api_msg.c
++++ b/src/api/api_msg.c
+@@ -66,7 +66,7 @@
+ #define IN_NONBLOCKING_CONNECT(conn) netconn_is_flag_set(conn, NETCONN_FLAG_IN_NONBLOCKING_CONNECT)
+ 
+ #if LWIP_NETCONN_FULLDUPLEX
+-#define NETCONN_MBOX_VALID(conn, mbox) (sys_mbox_valid(mbox) && ((conn->flags & NETCONN_FLAG_MBOXINVALID) == 0))
++#define NETCONN_MBOX_VALID(conn, mbox) (sys_mbox_valid(mbox) && !netconn_is_flag_set(conn, NETCONN_FLAG_MBOXINVALID))
+ #else
+ #define NETCONN_MBOX_VALID(conn, mbox) sys_mbox_valid(mbox)
+ #endif
+@@ -258,7 +258,7 @@ recv_udp(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+     ip_addr_set(&buf->addr, addr);
+     buf->port = port;
+ #if LWIP_NETBUF_RECVINFO
+-    if (conn->flags & NETCONN_FLAG_PKTINFO) {
++    if (netconn_is_flag_set(conn, NETCONN_FLAG_PKTINFO)) {
+       /* get the UDP header - always in the first pbuf, ensured by udp_input */
+       const struct udp_hdr *udphdr = (const struct udp_hdr *)ip_next_header_ptr();
+       buf->flags = NETBUF_FLAG_DESTADDR;
+@@ -374,7 +374,7 @@ poll_tcp(void *arg, struct tcp_pcb *pcb)
+   /* @todo: implement connect timeout here? */
+ 
+   /* Did a nonblocking write fail before? Then check available write-space. */
+-  if (conn->flags & NETCONN_FLAG_CHECK_WRITESPACE) {
++  if (netconn_is_flag_set(conn, NETCONN_FLAG_CHECK_WRITESPACE)) {
+     /* If the queued byte- or pbuf-count drops below the configured low-water limit,
+        let select mark this pcb as writable again. */
+     if ((conn->pcb.tcp != NULL) && (tcp_sndbuf(conn->pcb.tcp) > TCP_SNDLOWAT) &&
+@@ -446,7 +446,7 @@ err_tcp(void *arg, err_t err)
+   /* store pending error */
+   conn->pending_err = err;
+   /* prevent application threads from blocking on 'recvmbox'/'acceptmbox' */
+-  conn->flags |= NETCONN_FLAG_MBOXCLOSED;
++  netconn_set_flags(conn, NETCONN_FLAG_MBOXCLOSED);
+ 
+   /* reset conn->state now before waking up other threads */
+   old_state = conn->state;
+@@ -834,7 +834,7 @@ netconn_drain(struct netconn *conn)
+   /* This runs when mbox and netconn are marked as closed,
+      so we don't need to lock against rx packets */
+ #if LWIP_NETCONN_FULLDUPLEX
+-  LWIP_ASSERT("netconn marked closed", conn->flags & NETCONN_FLAG_MBOXINVALID);
++  LWIP_ASSERT("netconn marked closed", netconn_is_flag_set(conn, NETCONN_FLAG_MBOXINVALID));
+ #endif /* LWIP_NETCONN_FULLDUPLEX */
+ 
+   /* Delete and drain the recvmbox. */
+@@ -898,7 +898,7 @@ netconn_mark_mbox_invalid(struct netconn *conn)
+   void *msg = LWIP_CONST_CAST(void *, &netconn_deleted);
+ 
+   /* Prevent new calls/threads from reading from the mbox */
+-  conn->flags |= NETCONN_FLAG_MBOXINVALID;
++  netconn_set_flags(conn, NETCONN_FLAG_MBOXINVALID);
+ 
+   SYS_ARCH_LOCKED(num_waiting = conn->mbox_threads_waiting);
+   for (i = 0; i < num_waiting; i++) {
+@@ -1734,7 +1734,7 @@ err_mem:
+         /* non-blocking write did not write everything: mark the pcb non-writable
+            and let poll_tcp check writable space to mark the pcb writable again */
+         API_EVENT(conn, NETCONN_EVT_SENDMINUS, 0);
+-        conn->flags |= NETCONN_FLAG_CHECK_WRITESPACE;
++        netconn_set_flags(conn, NETCONN_FLAG_CHECK_WRITESPACE);
+       } else if ((tcp_sndbuf(conn->pcb.tcp) <= TCP_SNDLOWAT) ||
+                  (tcp_sndqueuelen(conn->pcb.tcp) >= TCP_SNDQUEUELOWAT)) {
+         /* The queued byte- or pbuf-count exceeds the configured low-water limit,
+diff --git a/src/api/sockets.c b/src/api/sockets.c
+index 7852635..471d3ee 100644
+--- a/src/api/sockets.c
++++ b/src/api/sockets.c
+@@ -1705,7 +1705,7 @@ lwip_socket(int domain, int type, int protocol)
+ #if LWIP_NETBUF_RECVINFO
+       if (conn) {
+         /* netconn layer enables pktinfo by default, sockets default to off */
+-        conn->flags &= ~NETCONN_FLAG_PKTINFO;
++        netconn_clear_flags(conn, NETCONN_FLAG_PKTINFO);
+       }
+ #endif /* LWIP_NETBUF_RECVINFO */
+       break;
+@@ -3488,9 +3488,9 @@ lwip_setsockopt_impl(int s, int level, int optname, const void *optval, socklen_
+         case IP_PKTINFO:
+           LWIP_SOCKOPT_CHECK_OPTLEN_CONN_PCB_TYPE(sock, optlen, int, NETCONN_UDP);
+           if (*(const int *)optval) {
+-            sock->conn->flags |= NETCONN_FLAG_PKTINFO;
++            netconn_set_flags(sock->conn, NETCONN_FLAG_PKTINFO);
+           } else {
+-            sock->conn->flags &= ~NETCONN_FLAG_PKTINFO;
++            netconn_clear_flags(sock->conn, NETCONN_FLAG_PKTINFO);
+           }
+           break;
+ #endif /* LWIP_NETBUF_RECVINFO */
+diff --git a/src/include/lwip/api.h b/src/include/lwip/api.h
+index c2afaf2..e53d829 100644
+--- a/src/include/lwip/api.h
++++ b/src/include/lwip/api.h
+@@ -369,9 +369,40 @@ err_t   netconn_gethostbyname(const char *name, ip_addr_t *addr);
+ err_t   netconn_err(struct netconn *conn);
+ #define netconn_recv_bufsize(conn)      ((conn)->recv_bufsize)
+ 
+-#define netconn_set_flags(conn, set_flags)     do { (conn)->flags = (u8_t)((conn)->flags |  (set_flags)); } while(0)
+-#define netconn_clear_flags(conn, clr_flags)   do { (conn)->flags = (u8_t)((conn)->flags & (u8_t)(~(clr_flags) & 0xff)); } while(0)
+-#define netconn_is_flag_set(conn, flag)        (((conn)->flags & (flag)) != 0)
++/* Socket I/O and the TCP/IP thread update independent bits in the same
++ * byte. All accesses to a published netconn must preserve those updates.
++ */
++static inline u8_t
++netconn_get_flags(const struct netconn *conn)
++{
++  u8_t flags;
++
++  SYS_ARCH_GET(conn->flags, flags);
++  return flags;
++}
++
++static inline void
++netconn_set_flags(struct netconn *conn, u8_t flags)
++{
++  SYS_ARCH_LOCKED(conn->flags |= flags);
++}
++
++static inline u8_t
++netconn_take_flags(struct netconn *conn, u8_t mask)
++{
++  u8_t flags;
++
++  SYS_ARCH_LOCKED(
++    flags = conn->flags & mask;
++    if (flags) {
++      conn->flags &= (u8_t)~mask;
++    }
++  );
++  return flags;
++}
++
++#define netconn_clear_flags(conn, mask)      ((void)netconn_take_flags((conn), (mask)))
++#define netconn_is_flag_set(conn, flag)      ((netconn_get_flags(conn) & (flag)) != 0)
+ 
+ /** Set the blocking status of netconn calls (@todo: write/send is missing) */
+ #define netconn_set_nonblocking(conn, val)  do { if(val) { \
+@@ -379,7 +410,7 @@ err_t   netconn_err(struct netconn *conn);
+ } else { \
+   netconn_clear_flags(conn, NETCONN_FLAG_NON_BLOCKING); }} while(0)
+ /** Get the blocking status of netconn calls (@todo: write/send is missing) */
+-#define netconn_is_nonblocking(conn)        (((conn)->flags & NETCONN_FLAG_NON_BLOCKING) != 0)
++#define netconn_is_nonblocking(conn)        netconn_is_flag_set((conn), NETCONN_FLAG_NON_BLOCKING)
+ 
+ #if LWIP_IPV6
+ /** @ingroup netconn_common
+@@ -392,7 +423,7 @@ err_t   netconn_err(struct netconn *conn);
+ /** @ingroup netconn_common
+  * TCP: Get the IPv6 ONLY status of netconn calls (see NETCONN_FLAG_IPV6_V6ONLY)
+  */
+-#define netconn_get_ipv6only(conn)        (((conn)->flags & NETCONN_FLAG_IPV6_V6ONLY) != 0)
++#define netconn_get_ipv6only(conn)        netconn_is_flag_set((conn), NETCONN_FLAG_IPV6_V6ONLY)
+ #endif /* LWIP_IPV6 */
+ 
+ #if LWIP_SO_SNDTIMEO

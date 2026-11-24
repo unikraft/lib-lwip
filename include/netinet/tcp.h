@@ -92,5 +92,6 @@ struct tcphdr {
 #define	TCP_NODELAY	0x01	/* don't delay send to coalesce packets */
 #define	TCP_MAXSEG	0x02	/* set maximum segment size */
 #define	TCP_CORK	0x03	/* don't send out partial frames. Not supported/stub */
+#define TCP_USER_TIMEOUT 0x12	/* connection timeout in milliseconds */
 
 #endif

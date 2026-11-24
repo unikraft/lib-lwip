@@ -324,6 +324,8 @@ menuconfig LWIP_SOCKET
 	depends on LWIP_THREADS && (LWIP_UDP || LWIP_TCP)
 	bool "Socket API"
 	select LIBPOSIX_SOCKET
+	select LIBPOSIX_SOCKET_POLLED
+	select LIBUKFILE_FINALIZERS
 	default y
 
 if LWIP_SOCKET

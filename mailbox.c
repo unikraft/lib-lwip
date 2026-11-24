@@ -75,10 +75,13 @@ void sys_mbox_set_invalid(sys_mbox_t *mbox)
  */
 void sys_mbox_free(sys_mbox_t *mbox)
 {
-	UK_ASSERT(sys_mbox_valid(mbox));
+	SYS_ARCH_DECL_PROTECT(lev);
 
-	uk_mbox_free(mbox->a, mbox->mbox);
+	SYS_ARCH_PROTECT(lev);
+	UK_ASSERT(sys_mbox_valid(mbox));
 	sys_mbox_set_invalid(mbox);
+	SYS_ARCH_UNPROTECT(lev);
+	uk_mbox_free(mbox->a, mbox->mbox);
 }
 
 /* Posts "msg" to the mailbox, NULL msg's are not supported */

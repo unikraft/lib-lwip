@@ -49,9 +49,41 @@
 #include <uk/arch/time.h>
 #endif /* CONFIG_LWIP_WAITIFACE */
 #include <errno.h>
+#include <uk/arch/spinlock.h>
+#include <uk/lcpu.h>
+#include <uk/pcpuvar.h>
 #include <uk/netdev_core.h>
 #include "netif/uknetdev.h"
 #include <uk/init.h>
+
+static __spinlock _lwip_prot_lock = UKARCH_SPINLOCK_INITIALIZER();
+static long _lwip_prot_owner = -1L;
+static unsigned int _lwip_prot_depth;
+
+unsigned long uk_lwip_sys_arch_protect(void)
+{
+	unsigned long irqf = uk_lcpu_save_irqf();
+	long cpu = (long)uk_pcpuvar_current_get(uk_pcpuvar_cpu_idx);
+
+	if (__atomic_load_n(&_lwip_prot_owner, __ATOMIC_RELAXED) == cpu) {
+		_lwip_prot_depth++;
+		return irqf;
+	}
+	ukarch_spin_lock(&_lwip_prot_lock);
+	__atomic_store_n(&_lwip_prot_owner, cpu, __ATOMIC_RELAXED);
+	_lwip_prot_depth = 1;
+	return irqf;
+}
+
+void uk_lwip_sys_arch_unprotect(unsigned long irqf)
+{
+	UK_ASSERT(_lwip_prot_depth > 0);
+	if (--_lwip_prot_depth == 0) {
+		__atomic_store_n(&_lwip_prot_owner, -1L, __ATOMIC_RELAXED);
+		ukarch_spin_unlock(&_lwip_prot_lock);
+	}
+	uk_lcpu_restore_irqf(irqf);
+}
 
 #if LWIP_NETIF_EXT_STATUS_CALLBACK && CONFIG_LWIP_NETIF_STATUS_PRINT
 #include <stdio.h>
